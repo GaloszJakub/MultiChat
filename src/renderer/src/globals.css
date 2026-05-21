@@ -1,0 +1,74 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+:root {
+  --bg:              #0E0E11;
+  --bg-2:            #131318;
+  --surface:         #16161B;
+  --surface-2:       #1A1A20;
+  --surface-3:       #20202A;
+  --border:          #25252D;
+  --border-strong:   #34343F;
+  --hairline:        #1F1F26;
+  --text:            #ECECEE;
+  --text-soft:       #C2C2C8;
+  --text-muted:      #888892;
+  --text-dim:        #5C5C66;
+  --chatgpt:         #10A37F;
+  --claude:          #D97757;
+  --gemini:          #4285F4;
+  --grok:            #E7E7E7;
+  --ok:              #3FB950;
+  --warn:            #E3B341;
+  --err:             #F85149;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+}
+
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(1.4); }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes typebounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-3px); opacity: 1; }
+}

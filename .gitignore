@@ -1,0 +1,101 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Directory for instrumented code coverage downloads
+lib-cov
+coverage
+*.lcov
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Snowpack dependency directory
+web_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional stylelint cache
+.stylelintcache
+
+# Microbundle cache
+.rts2_cache_compile
+.rts2_cache_errors
+.rts2_cache_genc
+.rts2_cache_map
+
+# Featured frameworks
+.next/
+out/
+.nuxt/
+.expo/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Electron-Vite / Vite build outputs
+dist/
+dist-electron/
+.vite-inspect/
+
+# Electron packager / builder outputs
+dist_electron/
+*.dmg
+*.exe
+*.zip
+*.tar.gz
+*.pkg
+*.deb
+*.rpm
+*unpackaged*
+electron-builder-output/
+
+# Local databases & local configs
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Tooling-specific ignored directories
+.antigravitycli/
+.claude/
+CLAUDE.md
+design_extracted/
+design_raw.html

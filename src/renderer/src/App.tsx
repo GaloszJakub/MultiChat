@@ -1,0 +1,385 @@
+import React, { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { TitleBar } from './components/TitleBar'
+import { PromptComposer } from './components/PromptComposer'
+import { SkillsSidebar } from './components/SkillsSidebar'
+import { ResponseCard } from './components/ResponseCard'
+import { TabBar } from './components/TabBar'
+import { SettingsPanel } from './components/SettingsPanel'
+import { SERVICES, SERVICE_MODELS } from './lib/services'
+import { ModelPicker } from './components/ModelPicker'
+import { api } from './lib/ipc'
+import type { ServiceId } from '../../main/services/types'
+import type { Status } from './components/StatusBadge'
+
+export type Message = { role: 'user' | 'assistant'; text: string }
+
+const CARD_SERVICES = new Set<ServiceId>(['claude', 'gemini'])
+
+type StatusMap = Record<ServiceId, Status>
+
+const INITIAL_STATUSES: StatusMap = {
+  chatgpt: 'loggedout',
+  claude: 'loggedout',
+  gemini: 'loggedout',
+  grok: 'loggedout',
+  kimi: 'loggedout',
+  deepseek: 'loggedout',
+}
+
+const emptyConversations = (): Record<ServiceId, Message[]> => ({
+  chatgpt: [], claude: [], gemini: [], grok: [], kimi: [], deepseek: [],
+})
+
+const DEFAULT_ENABLED: ServiceId[] = ['claude', 'gemini']
+
+export default function App() {
+  const [prompt, setPrompt] = useState('')
+  const [isSending, setIsSending] = useState(false)
+  const [enabledIds, setEnabledIds] = useState<Set<ServiceId>>(new Set(DEFAULT_ENABLED))
+  const [activeId, setActiveId] = useState<ServiceId>(DEFAULT_ENABLED[0])
+  const [statuses, setStatuses] = useState<StatusMap>(INITIAL_STATUSES)
+  const [conversations, setConversations] = useState<Record<ServiceId, Message[]>>(emptyConversations)
+  const [selectedSkill, setSelectedSkill] = useState<{ name: string; file: string } | null>(null)
+  const [selectedModels, setSelectedModels] = useState<Partial<Record<ServiceId, string>>>(() =>
+    Object.fromEntries(
+      Object.entries(SERVICE_MODELS).map(([id, models]) => [id, models![0].value])
+    )
+  )
+  const [skillContent, setSkillContent] = useState<string>('')
+  const [topHeight, setTopHeight] = useState(220)
+  const [showSettings, setShowSettings] = useState(false)
+  const [nativeServices, setNativeServices] = useState<Set<ServiceId>>(new Set([...CARD_SERVICES]))
+  const [summaryEnabled, setSummaryEnabled] = useState(false)
+  const [summaryModelId, setSummaryModelId] = useState<ServiceId | null>(null)
+
+  const summaryPending = useRef<{
+    originalPrompt: string
+    modelId: ServiceId
+    ids: ServiceId[]
+    done: Set<ServiceId>
+    responses: Map<ServiceId, string>
+    modelDone: boolean
+  } | null>(null)
+
+  const activePaneRef = useRef<HTMLDivElement>(null)
+  const lastBoundsKey = useRef('')
+  const dragging = useRef(false)
+  const dragStartY = useRef(0)
+  const dragStartH = useRef(0)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // When enabled services change, ensure activeId is still valid
+  useEffect(() => {
+    if (!enabledIds.has(activeId)) {
+      const first = SERVICES.find(s => enabledIds.has(s.id))
+      if (first) setActiveId(first.id)
+    }
+  }, [enabledIds, activeId])
+
+  const isCard = useCallback((id: ServiceId) =>
+    CARD_SERVICES.has(id) && !nativeServices.has(id),
+  [nativeServices])
+
+  const reportBounds = useCallback(() => {
+    if (showSettings || isCard(activeId)) {
+      const key = '[]'
+      if (key === lastBoundsKey.current) return
+      lastBoundsKey.current = key
+      api.setViewBounds([])
+      return
+    }
+    const el = activePaneRef.current
+    if (!el) return
+    const dpr = window.devicePixelRatio ?? 1
+    const r = el.getBoundingClientRect()
+    if (r.width <= 0 || r.height <= 0) return
+    const bounds = [{ id: activeId, x: Math.round(r.left * dpr), y: Math.round(r.top * dpr), width: Math.round(r.width * dpr), height: Math.round(r.height * dpr) }]
+    const key = JSON.stringify(bounds)
+    if (key === lastBoundsKey.current) return
+    lastBoundsKey.current = key
+    api.setViewBounds(bounds)
+  }, [activeId, isCard, showSettings])
+
+  useLayoutEffect(() => { reportBounds() })
+
+  useEffect(() => {
+    const ro = new ResizeObserver(reportBounds)
+    if (activePaneRef.current) ro.observe(activePaneRef.current)
+    window.addEventListener('resize', reportBounds)
+    return () => { ro.disconnect(); window.removeEventListener('resize', reportBounds) }
+  }, [reportBounds])
+
+  const handleCardSend = useCallback(async (id: ServiceId, text: string) => {
+    setConversations(prev => ({
+      ...prev,
+      [id]: [...prev[id], { role: 'user', text }, { role: 'assistant', text: '' }],
+    }))
+    setStatuses(prev => ({ ...prev, [id]: 'sending' }))
+    try {
+      const results = await api.broadcast(text, [id])
+      setStatuses(prev => ({ ...prev, [id]: results[0]?.ok ? 'sent' : 'error' }))
+    } catch {
+      setStatuses(prev => ({ ...prev, [id]: 'error' }))
+    }
+  }, [])
+
+  const handleCardSendRef = useRef(handleCardSend)
+  handleCardSendRef.current = handleCardSend
+
+  useEffect(() => {
+    const unsub = api.onServiceResponse(({ id, text, done }) => {
+      if (CARD_SERVICES.has(id)) {
+        setConversations(prev => {
+          const msgs = prev[id]
+          if (!msgs.length) return prev
+          const lastIdx = msgs.length - 1
+          if (msgs[lastIdx].role !== 'assistant') return prev
+          const next = [...msgs]
+          next[lastIdx] = { role: 'assistant', text }
+          return { ...prev, [id]: next }
+        })
+      }
+      if (done && text.length > 0) {
+        setStatuses(prev => prev[id] === 'sending' || prev[id] === 'sent' ? { ...prev, [id]: 'idle' } : prev)
+
+        const sp = summaryPending.current
+        if (sp) {
+          if (sp.ids.includes(id)) {
+            sp.responses.set(id, text)
+            sp.done.add(id)
+          }
+          if (id === sp.modelId) {
+            sp.modelDone = true
+          }
+          if (sp.done.size === sp.ids.length && sp.modelDone) {
+            summaryPending.current = null
+            const parts = [...sp.responses.entries()]
+              .map(([sid, t]) => {
+                const label = SERVICES.find(s => s.id === sid)?.label ?? sid
+                return `**${label}:**\n${t}`
+              })
+              .join('\n\n---\n\n')
+            const summaryPrompt =
+              `You are synthesizing responses from multiple AI models to this question:\n\n"${sp.originalPrompt}"\n\n` +
+              `Here are their responses:\n\n${parts}\n\n---\n\n` +
+              `Provide a comprehensive synthesis: highlight key agreements, interesting differences, and unique insights from each model.`
+            handleCardSendRef.current(sp.modelId, summaryPrompt)
+          }
+        }
+      }
+    })
+    return unsub
+  }, [])
+
+  useEffect(() => {
+    const unsub = api.onServiceStatus(({ id, loggedIn }) => {
+      setStatuses(prev => {
+        const cur = prev[id]
+        if (cur === 'sending' || cur === 'sent') return prev
+        const next = loggedIn ? 'idle' : 'loggedout'
+        if (cur === next) return prev
+        return { ...prev, [id]: next }
+      })
+    })
+    return unsub
+  }, [])
+
+  const handleToggle = useCallback((id: ServiceId) => {
+    setEnabledIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleSend = useCallback(async () => {
+    if (!prompt.trim() || isSending || enabledIds.size === 0) return
+    const ids = [...enabledIds]
+    const finalPrompt = skillContent ? `${skillContent}\n\n---\n\n${prompt.trim()}` : prompt.trim()
+    setIsSending(true)
+
+    const effectiveSummaryModelId = summaryEnabled ? (summaryModelId ?? ids[0]) : null
+    if (summaryEnabled && effectiveSummaryModelId) {
+      const summaryIds = ids.filter(id => id !== effectiveSummaryModelId)
+      summaryPending.current = {
+        originalPrompt: finalPrompt,
+        modelId: effectiveSummaryModelId,
+        ids: summaryIds.length > 0 ? summaryIds : ids,
+        done: new Set(),
+        responses: new Map(),
+        modelDone: false,
+      }
+    }
+
+    setConversations(prev => {
+      const next = { ...prev }
+      ids.filter(id => CARD_SERVICES.has(id)).forEach(id => {
+        next[id] = [...prev[id], { role: 'user', text: finalPrompt }, { role: 'assistant', text: '' }]
+      })
+      return next
+    })
+    setStatuses(prev => {
+      const next = { ...prev }
+      ids.forEach(id => { next[id] = 'sending' })
+      return next
+    })
+    try {
+      const results = await api.broadcast(finalPrompt, ids)
+      setStatuses(prev => {
+        const next = { ...prev }
+        results.forEach(r => { next[r.id] = r.ok ? 'sent' : 'error' })
+        return next
+      })
+    } catch {
+      setStatuses(prev => {
+        const next = { ...prev }
+        ids.forEach(id => { next[id] = 'error' })
+        return next
+      })
+    } finally {
+      setIsSending(false)
+      setPrompt('')
+    }
+  }, [prompt, isSending, enabledIds, skillContent, summaryEnabled, summaryModelId])
+
+  const onDragStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    dragging.current = true
+    dragStartY.current = e.clientY
+    dragStartH.current = topHeight
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging.current) return
+      const containerH = containerRef.current?.clientHeight ?? window.innerHeight
+      const newH = Math.max(120, Math.min(containerH - 160, dragStartH.current + (ev.clientY - dragStartY.current)))
+      setTopHeight(newH)
+    }
+    const onUp = () => {
+      dragging.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  const handleSkillSelect = useCallback(async (skill: { name: string; file: string } | null) => {
+    setSelectedSkill(skill)
+    if (skill) {
+      const content = await api.skillsRead(skill.file)
+      setSkillContent(content)
+    } else {
+      setSkillContent('')
+    }
+  }, [])
+
+  const enabledServices = SERVICES.filter(s => enabledIds.has(s.id))
+  const activeService = SERVICES.find(s => s.id === activeId)
+  const activeIsCard = isCard(activeId)
+  const activeModels = SERVICE_MODELS[activeId]
+
+  const handleNewChat = useCallback((id: ServiceId) => {
+    setConversations(prev => ({ ...prev, [id]: [] }))
+    api.newChat(id)
+  }, [])
+
+  const handleToggleNative = (id: ServiceId) => {
+    setNativeServices(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    // reset bounds key so reportBounds fires
+    lastBoundsKey.current = ''
+  }
+
+  return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#0E0E11', overflow: 'hidden' }}>
+      <TitleBar />
+
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
+        <SkillsSidebar selectedSkill={selectedSkill} onSelect={handleSkillSelect} />
+
+        <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          {/* Composer */}
+          <div style={{ height: topHeight, flexShrink: 0, overflow: 'hidden' }}>
+            <PromptComposer
+              value={prompt}
+              onChange={setPrompt}
+              onSend={handleSend}
+              enabledIds={enabledIds}
+              onToggle={handleToggle}
+              isSending={isSending}
+              statuses={statuses}
+              summaryEnabled={summaryEnabled}
+              summaryModelId={summaryModelId}
+              onToggleSummary={() => setSummaryEnabled(v => !v)}
+              onSelectSummaryModel={id => setSummaryModelId(id)}
+            />
+          </div>
+
+          {/* Drag handle */}
+          <div onMouseDown={onDragStart} style={{ height: 8, flexShrink: 0, cursor: 'row-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', userSelect: 'none' }}>
+            <div style={{ width: 48, height: 3, borderRadius: 2, background: '#2a2a2a' }} />
+          </div>
+
+          {/* Tab bar */}
+          <TabBar
+            services={enabledServices}
+            activeId={activeId}
+            statuses={statuses}
+            onSelect={id => { setActiveId(id); setShowSettings(false) }}
+            onLogin={id => api.cdpLogin(id)}
+            onDevTools={id => api.openDevTools(id)}
+            onNewChat={handleNewChat}
+            showSettings={showSettings}
+            onToggleSettings={() => setShowSettings(v => !v)}
+          />
+
+          {/* Model picker row (only for active service that has models, only in card mode) */}
+          {activeModels && activeIsCard && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderBottom: '1px solid #141414', flexShrink: 0 }}>
+              <span style={{ fontSize: 10, color: '#444', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Model</span>
+              <ModelPicker
+                models={activeModels}
+                selected={selectedModels[activeId] ?? activeModels[0].value}
+                color={activeService?.color ?? '#666'}
+                onChange={v => {
+                  setSelectedModels(prev => ({ ...prev, [activeId]: v }))
+                  api.setModel(activeId, v)
+                }}
+              />
+            </div>
+          )}
+
+          {/* Content area */}
+          <div
+            ref={activePaneRef}
+            style={{ flex: 1, minHeight: 0, padding: (showSettings || !activeIsCard) ? '0' : '10px 12px 12px', display: 'flex', flexDirection: 'column' }}
+          >
+            {showSettings ? (
+              <SettingsPanel
+                nativeServices={nativeServices}
+                onToggleNative={handleToggleNative}
+              />
+            ) : activeIsCard && activeService ? (
+              <ResponseCard
+                service={activeService}
+                status={statuses[activeId]}
+                messages={conversations[activeId]}
+                enabled={enabledIds.has(activeId)}
+                onToggle={() => handleToggle(activeId)}
+                onLogin={() => api.cdpLogin(activeId)}
+                onDevTools={() => api.openDevTools(activeId)}
+                onSend={text => handleCardSend(activeId, text)}
+              />
+            ) : (
+              <div style={{ width: '100%', height: '100%', borderRadius: 0, border: 'none', background: '#0a0a0a' }} />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

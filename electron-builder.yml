@@ -1,0 +1,22 @@
+appId: com.multimind.app
+productName: MultiMind
+copyright: Copyright © 2026
+
+directories:
+  buildResources: build
+  output: dist
+
+files:
+  - out/**/*
+  - "!**/*.{md,txt}"
+
+win:
+  executableName: MultiMind
+  target:
+    - target: nsis
+      arch: [x64]
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false

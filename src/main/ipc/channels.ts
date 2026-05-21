@@ -17,6 +17,7 @@ export const IPC = {
   SKILLS_READ: 'skills:read',
   SKILLS_OPEN_DIR: 'skills:openDir',
   SKILLS_CREATE: 'skills:create',
+  SKILLS_DELETE: 'skills:delete',
   SERVICE_SET_MODEL: 'service:setModel',
   VIEWS_NEW_CHAT: 'views:newChat',
 } as const

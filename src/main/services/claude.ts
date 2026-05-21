@@ -28,14 +28,14 @@ export const claudeAdapter: ServiceAdapter = {
   },
 
   async submitPrompt(host: WebContentsHost, text: string): Promise<void> {
-    const escaped = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`')
+    const safeText = JSON.stringify(text)
     const found = await host.webContents.executeJavaScript(`
       (() => {
         const el = document.querySelector('${SELECTORS.composer}')
         if (!el) return false
         el.focus()
         const dt = new DataTransfer()
-        dt.setData('text/plain', \`${escaped}\`)
+        dt.setData('text/plain', ${safeText})
         el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
         return true
       })()

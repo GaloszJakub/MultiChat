@@ -27,6 +27,7 @@ const api = {
   skillsRead: (file: string): Promise<string> => ipcRenderer.invoke(IPC.SKILLS_READ, file),
   skillsOpenDir: () => ipcRenderer.invoke(IPC.SKILLS_OPEN_DIR),
   skillsCreate: (name: string, content: string): Promise<{ file: string }> => ipcRenderer.invoke(IPC.SKILLS_CREATE, name, content),
+  skillsDelete: (file: string): Promise<{ ok: boolean }> => ipcRenderer.invoke(IPC.SKILLS_DELETE, file),
   newChat: (id: ServiceId) => ipcRenderer.invoke(IPC.VIEWS_NEW_CHAT, id),
   setModel: (id: ServiceId, model: string): Promise<{ ok: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC.SERVICE_SET_MODEL, id, model),

@@ -31,14 +31,14 @@ export const geminiAdapter: ServiceAdapter = {
   },
 
   async submitPrompt(host: WebContentsHost, text: string): Promise<void> {
-    const escaped = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`')
+    const safeText = JSON.stringify(text)
     const found = await host.webContents.executeJavaScript(`
       (() => {
         const el = document.querySelector('${SELECTORS.composer}')
         if (!el) return false
         el.focus()
         document.execCommand('selectAll', false, null)
-        document.execCommand('insertText', false, \`${escaped}\`)
+        document.execCommand('insertText', false, ${safeText})
         el.dispatchEvent(new Event('input', { bubbles: true }))
         el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }))
         el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }))

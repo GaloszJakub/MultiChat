@@ -1,6 +1,6 @@
 import { app, shell } from 'electron'
 import { join } from 'path'
-import { mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync } from 'fs'
+import { mkdirSync, readdirSync, readFileSync, existsSync, writeFileSync, unlinkSync } from 'fs'
 
 const SKILLS_DIR = join(app.getPath('userData'), 'skills')
 
@@ -47,6 +47,14 @@ export function createSkill(name: string, content: string): string {
   const p = join(SKILLS_DIR, file)
   writeFileSync(p, content.trim(), 'utf-8')
   return file
+}
+
+export function deleteSkill(file: string): void {
+  ensureDir()
+  const p = join(SKILLS_DIR, file)
+  if (existsSync(p) && p.startsWith(SKILLS_DIR)) {
+    unlinkSync(p)
+  }
 }
 
 export { SKILLS_DIR }

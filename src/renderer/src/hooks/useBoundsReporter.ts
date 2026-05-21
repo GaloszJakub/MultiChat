@@ -13,7 +13,6 @@ export function useBoundsReporter(panes: PaneRef[]) {
 
   useEffect(() => {
     const report = () => {
-      const dpr = window.devicePixelRatio ?? 1
       const bounds = panes
         .map(({ id, ref }) => {
           const el = ref.current
@@ -22,10 +21,10 @@ export function useBoundsReporter(panes: PaneRef[]) {
           if (r.width <= 0 || r.height <= 0) return null
           return {
             id,
-            x: Math.round(r.left * dpr),
-            y: Math.round(r.top * dpr),
-            width: Math.round(r.width * dpr),
-            height: Math.round(r.height * dpr),
+            x: Math.round(r.left),
+            y: Math.round(r.top),
+            width: Math.round(r.width),
+            height: Math.round(r.height),
           }
         })
         .filter(Boolean) as { id: ServiceId; x: number; y: number; width: number; height: number }[]

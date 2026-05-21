@@ -12,15 +12,28 @@ interface Props {
   onToggle: (id: ServiceId) => void
   isSending: boolean
   statuses: Record<ServiceId, Status>
-  summaryEnabled: boolean
   summaryModelId: ServiceId | null
-  onToggleSummary: () => void
   onSelectSummaryModel: (id: ServiceId) => void
+  onSummarize: () => void
+  hasResponsesToSummarize: boolean
 }
 
-export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, isSending, statuses, summaryEnabled, summaryModelId, onToggleSummary, onSelectSummaryModel }: Props) {
+export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, isSending, statuses, summaryModelId, onSelectSummaryModel, onSummarize, hasResponsesToSummarize }: Props) {
   const enabledServices = SERVICES.filter(s => enabledIds.has(s.id))
   const taRef = useRef<HTMLTextAreaElement>(null)
+
+  const [dropdownOpen, setDropdownOpen] = React.useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   useEffect(() => {
     const ta = taRef.current
@@ -47,21 +60,13 @@ export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, 
       style={{
         padding: '14px 20px 16px',
         display: 'grid',
-        gridTemplateColumns: '220px 1fr 140px',
+        gridTemplateColumns: '1fr 220px',
         gap: 20,
         alignItems: 'start',
         borderBottom: '1px solid var(--hairline)',
         background: 'linear-gradient(180deg, rgba(255,255,255,0.015), transparent)',
       }}
     >
-      {/* Brand */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 8 }}>
-        <BrandMark />
-        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-0.01em' }}>MultiMind</div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Ask everyone at once</div>
-        </div>
-      </div>
 
       {/* Prompt zone */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -237,79 +242,149 @@ export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, 
           {charCount} / 4 000 chars
         </div>
 
-        {/* Summary toggle */}
+        {/* Summarize Action */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', userSelect: 'none' }}>
-            <span style={{ fontSize: 11, color: summaryEnabled ? 'var(--text-soft)' : 'var(--text-dim)' }}>Summarize</span>
-            <div
-              onClick={onToggleSummary}
-              style={{
-                width: 28, height: 16, borderRadius: 8, position: 'relative', cursor: 'pointer',
-                background: summaryEnabled ? '#4D6BFE' : 'var(--surface-3)',
-                border: '1px solid var(--border)',
-                transition: 'background 0.15s',
-              }}
-            >
-              <div style={{
-                position: 'absolute', top: 2, left: summaryEnabled ? 13 : 2,
-                width: 10, height: 10, borderRadius: '50%',
-                background: summaryEnabled ? '#fff' : 'var(--text-dim)',
-                transition: 'left 0.15s',
-              }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div ref={dropdownRef} style={{ position: 'relative', width: 100 }}>
+              <button
+                onClick={() => setDropdownOpen(!dropdownOpen)}
+                style={{
+                  fontSize: 11,
+                  padding: '4px 6px 4px 8px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface-2)',
+                  color: 'var(--text-soft)',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  height: 28,
+                  width: 100,
+                  textAlign: 'left',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  userSelect: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 68 }}>
+                  {SERVICES.find(s => s.id === (summaryModelId ?? enabledServices[0]?.id))?.label ?? 'Select'}
+                </span>
+                <svg
+                  width="8"
+                  height="8"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  style={{
+                    transform: dropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.15s ease',
+                    flexShrink: 0,
+                  }}
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </button>
+              {dropdownOpen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: 'calc(100% + 4px)',
+                    left: 0,
+                    width: 140,
+                    background: '#16161B',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
+                    zIndex: 1000,
+                    padding: 4,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 2,
+                  }}
+                >
+                  {(enabledServices.length > 0 ? enabledServices : SERVICES).map(s => {
+                    const active = s.id === (summaryModelId ?? enabledServices[0]?.id)
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          onSelectSummaryModel(s.id)
+                          setDropdownOpen(false)
+                        }}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 8,
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          border: 'none',
+                          background: active ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+                          color: active ? 'var(--text)' : 'var(--text-soft)',
+                          fontSize: 11.5,
+                          fontWeight: active ? 600 : 500,
+                          textAlign: 'left',
+                          cursor: 'pointer',
+                          width: '100%',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (!active) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.04)'
+                        }}
+                        onMouseLeave={(e) => {
+                          if (!active) e.currentTarget.style.background = 'transparent'
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: '50%',
+                            background: s.color,
+                            display: 'block',
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {s.label}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
-          </label>
-          {summaryEnabled && enabledServices.length > 0 && (
-            <select
-              value={summaryModelId ?? enabledServices[0]?.id ?? ''}
-              onChange={e => onSelectSummaryModel(e.target.value as ServiceId)}
+            <button
+              onClick={onSummarize}
+              disabled={!hasResponsesToSummarize || isSending}
               style={{
-                fontSize: 10.5, padding: '3px 6px', borderRadius: 5,
-                border: '1px solid var(--border)', background: 'var(--surface-2)',
-                color: 'var(--text-soft)', cursor: 'pointer', outline: 'none',
-                fontFamily: 'inherit',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                padding: '0 10px',
+                height: 28,
+                borderRadius: 6,
+                background: (!hasResponsesToSummarize || isSending) ? 'var(--surface-3)' : 'linear-gradient(180deg, #4D6BFE, #3b50df)',
+                color: (!hasResponsesToSummarize || isSending) ? 'var(--text-muted)' : '#ffffff',
+                fontWeight: 600,
+                fontSize: 11,
+                border: 'none',
+                boxShadow: (!hasResponsesToSummarize || isSending) ? undefined : '0 4px 12px rgba(77,107,254,0.15)',
+                transition: 'all 0.15s',
+                opacity: (!hasResponsesToSummarize || isSending) ? 0.5 : 1,
+                cursor: (!hasResponsesToSummarize || isSending) ? 'not-allowed' : 'pointer',
+                width: 100,
               }}
             >
-              {enabledServices.map(s => (
-                <option key={s.id} value={s.id}>{s.label}</option>
-              ))}
-            </select>
-          )}
+              <span>Summarize</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function BrandMark() {
-  return (
-    <div
-      style={{
-        width: 30,
-        height: 30,
-        borderRadius: 8,
-        background: 'conic-gradient(from 200deg at 50% 50%, #10A37F 0deg, #4285F4 90deg, #D97757 180deg, #E7E7E7 270deg, #10A37F 360deg)',
-        position: 'relative',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          position: 'absolute',
-          inset: 6,
-          borderRadius: 4,
-          background: 'var(--bg)',
-        }}
-      />
-      <span
-        style={{
-          position: 'absolute',
-          inset: 11,
-          borderRadius: 2,
-          background: 'linear-gradient(135deg, #fff, #aaa)',
-          zIndex: 1,
-        }}
-      />
-    </div>
-  )
-}

@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell, globalShortcut, session } from 'electron'
 import { join } from 'path'
 import { electronApp, is } from '@electron-toolkit/utils'
 import { ViewManager } from './views/manager'
-import { registerHandlers } from './ipc/handlers'
+import { registerHandlers, stopLoginPoller } from './ipc/handlers'
 
 // Remove Electron automation signals before app ready
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
@@ -86,15 +86,19 @@ function createWindow() {
     })
   })
 
-  win.on('closed', () => {
+  win.on('close', () => {
+    stopLoginPoller()
     viewManager?.destroy()
+  })
+
+  win.on('closed', () => {
     viewManager = null
     win = null
   })
 }
 
 app.whenReady().then(() => {
-  electronApp.setAppUserModelId('com.multimind.app')
+  electronApp.setAppUserModelId('com.multichat.app')
   setupSessions()
   createWindow()
 

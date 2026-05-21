@@ -109,7 +109,7 @@ export function startCdpLogin(
   if (!config) { onDone(false); return () => {} }
 
   const chromePath = findChrome()
-  const profileDir = join(tmpdir(), `multimind-cdp-${id}-${Date.now()}`)
+  const profileDir = join(tmpdir(), `multichat-cdp-${id}-${Date.now()}`)
   mkdirSync(profileDir, { recursive: true })
 
   const proc = spawn(chromePath, [

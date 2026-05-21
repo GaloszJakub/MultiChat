@@ -39,7 +39,7 @@ export function TitleBar() {
     }}>
       {/* App title */}
       <div style={{ flex: 1, paddingLeft: 12, fontSize: 12, fontWeight: 600, color: '#555', letterSpacing: '0.02em' }}>
-        MultiMind
+        MultiChat
       </div>
 
       {/* Windows controls */}

@@ -164,7 +164,7 @@ export class ViewManager {
     const popup = new BrowserWindow({
       width: 820,
       height: 720,
-      title: `Sign in to ${adapter.label} — MultiMind`,
+      title: `Sign in to ${adapter.label} — MultiChat`,
       // no parent — Google detects parent window as webview context
       webPreferences: {
         partition: adapter.partition, // same partition → shared cookies
@@ -226,8 +226,16 @@ export class ViewManager {
       if (!popup.isDestroyed()) popup.close()
     }
     this.popups.clear()
-    for (const view of this.views.values()) {
-      ;(this.win as any).removeBrowserView(view)
+    if (this.win && !this.win.isDestroyed()) {
+      for (const view of this.views.values()) {
+        try {
+          if (!view.webContents.isDestroyed()) {
+            ;(this.win as any).removeBrowserView(view)
+          }
+        } catch (e) {
+          // ignore if already destroyed or detached
+        }
+      }
     }
     this.views.clear()
   }

@@ -7,7 +7,7 @@ import * as http from 'http'
 import WebSocket from 'ws'
 
 const CDP_PORT = 19222
-const PROFILE_DIR = join(tmpdir(), 'multimind-gemini-profile')
+const PROFILE_DIR = join(tmpdir(), 'multichat-gemini-profile')
 
 function findChrome(): string {
   const candidates = [

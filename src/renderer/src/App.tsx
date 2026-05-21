@@ -49,17 +49,11 @@ export default function App() {
   const [topHeight, setTopHeight] = useState(220)
   const [showSettings, setShowSettings] = useState(false)
   const [nativeServices, setNativeServices] = useState<Set<ServiceId>>(new Set([...CARD_SERVICES]))
-  const [summaryEnabled, setSummaryEnabled] = useState(false)
   const [summaryModelId, setSummaryModelId] = useState<ServiceId | null>(null)
-
-  const summaryPending = useRef<{
-    originalPrompt: string
-    modelId: ServiceId
-    ids: ServiceId[]
-    done: Set<ServiceId>
-    responses: Map<ServiceId, string>
-    modelDone: boolean
-  } | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
+  const [latestResponses, setLatestResponses] = useState<Record<ServiceId, string>>(() => ({
+    chatgpt: '', claude: '', gemini: '', grok: '', kimi: '', deepseek: '',
+  }))
 
   const activePaneRef = useRef<HTMLDivElement>(null)
   const lastBoundsKey = useRef('')
@@ -81,7 +75,7 @@ export default function App() {
   [nativeServices])
 
   const reportBounds = useCallback(() => {
-    if (showSettings || isCard(activeId)) {
+    if (showSettings || isCard(activeId) || modalOpen) {
       const key = '[]'
       if (key === lastBoundsKey.current) return
       lastBoundsKey.current = key
@@ -90,15 +84,14 @@ export default function App() {
     }
     const el = activePaneRef.current
     if (!el) return
-    const dpr = window.devicePixelRatio ?? 1
     const r = el.getBoundingClientRect()
     if (r.width <= 0 || r.height <= 0) return
-    const bounds = [{ id: activeId, x: Math.round(r.left * dpr), y: Math.round(r.top * dpr), width: Math.round(r.width * dpr), height: Math.round(r.height * dpr) }]
+    const bounds = [{ id: activeId, x: Math.round(r.left), y: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) }]
     const key = JSON.stringify(bounds)
     if (key === lastBoundsKey.current) return
     lastBoundsKey.current = key
     api.setViewBounds(bounds)
-  }, [activeId, isCard, showSettings])
+  }, [activeId, isCard, showSettings, modalOpen])
 
   useLayoutEffect(() => { reportBounds() })
 
@@ -128,6 +121,10 @@ export default function App() {
 
   useEffect(() => {
     const unsub = api.onServiceResponse(({ id, text, done }) => {
+      console.log(`[App:onServiceResponse] id: ${id}, done: ${done}, textLength: ${text.length}`)
+      if (text.length > 0) {
+        setLatestResponses(prev => ({ ...prev, [id]: text }))
+      }
       if (CARD_SERVICES.has(id)) {
         setConversations(prev => {
           const msgs = prev[id]
@@ -141,31 +138,6 @@ export default function App() {
       }
       if (done && text.length > 0) {
         setStatuses(prev => prev[id] === 'sending' || prev[id] === 'sent' ? { ...prev, [id]: 'idle' } : prev)
-
-        const sp = summaryPending.current
-        if (sp) {
-          if (sp.ids.includes(id)) {
-            sp.responses.set(id, text)
-            sp.done.add(id)
-          }
-          if (id === sp.modelId) {
-            sp.modelDone = true
-          }
-          if (sp.done.size === sp.ids.length && sp.modelDone) {
-            summaryPending.current = null
-            const parts = [...sp.responses.entries()]
-              .map(([sid, t]) => {
-                const label = SERVICES.find(s => s.id === sid)?.label ?? sid
-                return `**${label}:**\n${t}`
-              })
-              .join('\n\n---\n\n')
-            const summaryPrompt =
-              `You are synthesizing responses from multiple AI models to this question:\n\n"${sp.originalPrompt}"\n\n` +
-              `Here are their responses:\n\n${parts}\n\n---\n\n` +
-              `Provide a comprehensive synthesis: highlight key agreements, interesting differences, and unique insights from each model.`
-            handleCardSendRef.current(sp.modelId, summaryPrompt)
-          }
-        }
       }
     })
     return unsub
@@ -199,18 +171,11 @@ export default function App() {
     const finalPrompt = skillContent ? `${skillContent}\n\n---\n\n${prompt.trim()}` : prompt.trim()
     setIsSending(true)
 
-    const effectiveSummaryModelId = summaryEnabled ? (summaryModelId ?? ids[0]) : null
-    if (summaryEnabled && effectiveSummaryModelId) {
-      const summaryIds = ids.filter(id => id !== effectiveSummaryModelId)
-      summaryPending.current = {
-        originalPrompt: finalPrompt,
-        modelId: effectiveSummaryModelId,
-        ids: summaryIds.length > 0 ? summaryIds : ids,
-        done: new Set(),
-        responses: new Map(),
-        modelDone: false,
-      }
-    }
+    setLatestResponses(prev => {
+      const next = { ...prev }
+      ids.forEach(id => { next[id] = '' })
+      return next
+    })
 
     setConversations(prev => {
       const next = { ...prev }
@@ -241,7 +206,47 @@ export default function App() {
       setIsSending(false)
       setPrompt('')
     }
-  }, [prompt, isSending, enabledIds, skillContent, summaryEnabled, summaryModelId])
+  }, [prompt, isSending, enabledIds, skillContent])
+
+  const handleSummarize = useCallback(async () => {
+    const targetModelId = summaryModelId ?? [...enabledIds][0]
+    if (!targetModelId) return
+
+    const parts = SERVICES
+      .filter(s => enabledIds.has(s.id) && s.id !== targetModelId)
+      .map(s => {
+        const text = latestResponses[s.id] || ''
+        if (!text.trim()) return null
+        return `**${s.label}:**\n${text}`
+      })
+      .filter(Boolean)
+      .join('\n\n---\n\n')
+
+    if (!parts) return
+
+    const originalPromptMsg = SERVICES
+      .filter(s => enabledIds.has(s.id))
+      .map(s => {
+        const msgs = conversations[s.id] || []
+        const lastUser = [...msgs].reverse().find(m => m.role === 'user')
+        return lastUser?.text
+      })
+      .find(Boolean) || "the previous question"
+
+    const summaryPrompt =
+      `You are synthesizing responses from multiple AI models to this question:\n\n"${originalPromptMsg}"\n\n` +
+      `Here are their responses:\n\n${parts}\n\n---\n\n` +
+      `Provide a comprehensive synthesis: highlight key agreements, interesting differences, and unique insights from each model.`
+
+    setEnabledIds(prev => {
+      const next = new Set(prev)
+      next.add(targetModelId)
+      return next
+    })
+    setActiveId(targetModelId)
+
+    handleCardSend(targetModelId, summaryPrompt)
+  }, [enabledIds, conversations, latestResponses, summaryModelId, handleCardSend])
 
   const onDragStart = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -280,6 +285,7 @@ export default function App() {
 
   const handleNewChat = useCallback((id: ServiceId) => {
     setConversations(prev => ({ ...prev, [id]: [] }))
+    setLatestResponses(prev => ({ ...prev, [id]: '' }))
     api.newChat(id)
   }, [])
 
@@ -299,7 +305,7 @@ export default function App() {
       <TitleBar />
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
-        <SkillsSidebar selectedSkill={selectedSkill} onSelect={handleSkillSelect} />
+        <SkillsSidebar selectedSkill={selectedSkill} onSelect={handleSkillSelect} onModalToggle={setModalOpen} />
 
         <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {/* Composer */}
@@ -312,10 +318,10 @@ export default function App() {
               onToggle={handleToggle}
               isSending={isSending}
               statuses={statuses}
-              summaryEnabled={summaryEnabled}
               summaryModelId={summaryModelId}
-              onToggleSummary={() => setSummaryEnabled(v => !v)}
               onSelectSummaryModel={id => setSummaryModelId(id)}
+              onSummarize={handleSummarize}
+              hasResponsesToSummarize={Object.values(latestResponses).some(text => text.trim().length > 0)}
             />
           </div>
 

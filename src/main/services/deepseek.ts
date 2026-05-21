@@ -36,28 +36,118 @@ export const deepseekAdapter: ServiceAdapter = {
   },
 
   async submitPrompt(host: WebContentsHost, text: string): Promise<void> {
-    const escaped = text.replace(/\\/g, '\\\\').replace(/`/g, '\\`')
+    const safeText = JSON.stringify(text)
     const found = await host.webContents.executeJavaScript(`
       (() => {
         const el = document.querySelector('${SELECTORS.composer}')
         if (!el) return false
         el.focus()
-        document.execCommand('selectAll', false, null)
-        document.execCommand('insertText', false, \`${escaped}\`)
-        el.dispatchEvent(new Event('input', { bubbles: true }))
+
+        const promptText = ${safeText}
+
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+          // Native React value setter for textareas
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set
+            || Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+          if (setter) {
+            setter.call(el, promptText)
+          } else {
+            el.value = promptText
+          }
+          el.dispatchEvent(new Event('input', { bubbles: true }))
+          el.dispatchEvent(new Event('change', { bubbles: true }))
+        } else {
+          // Fallback for contenteditable
+          document.execCommand('selectAll', false, null)
+          document.execCommand('insertText', false, promptText)
+          el.dispatchEvent(new Event('input', { bubbles: true }))
+          
+          // Secondary fallback using DataTransfer
+          const dt = new DataTransfer()
+          dt.setData('text/plain', promptText)
+          el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+        }
+
+        // Tiny delay and keypress simulator to ensure React state handles text changes
+        el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: ' ' }))
+        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ' ' }))
         return true
       })()
     `)
+
     if (!found) throw new Error('DeepSeek composer not found')
-    await delay(800)
+    await delay(600)
+
     const sent = await host.webContents.executeJavaScript(`
       (() => {
-        const btn = document.querySelector('${SELECTORS.sendButton}')
-        if (btn && !btn.disabled) { btn.click(); return true }
+        // Try multiple selectors and strategies to find the send button
+        let btn = document.querySelector('${SELECTORS.sendButton}')
+        
+        if (!btn) {
+          // Chinese aria-label
+          btn = document.querySelector('button[aria-label="发送"], div[role="button"][aria-label="发送"]')
+        }
+        if (!btn) {
+          // English aria-label
+          btn = document.querySelector('button[aria-label*="Send"], div[role="button"][aria-label*="Send"]')
+        }
+        if (!btn) {
+          // Find any button in the same container as the chat-input
+          const textarea = document.querySelector('#chat-input')
+          if (textarea) {
+            const parent = textarea.parentElement
+            if (parent) {
+              btn = parent.querySelector('button:not([aria-label*="attach"]):not([class*="attach"]), div[role="button"]:not([class*="attach"])')
+            }
+          }
+        }
+        if (!btn) {
+          // Find button by label text
+          const allBtns = [...document.querySelectorAll('button, div[role="button"]')]
+          btn = allBtns.find(b => {
+            const label = b.getAttribute('aria-label') || ''
+            const text = b.innerText || ''
+            return label.toLowerCase().includes('send') || label.includes('发送') || text.toLowerCase().includes('send') || text.includes('发送')
+          })
+        }
+
+        if (btn && !btn.disabled) {
+          btn.click()
+          return true
+        }
+
+        // Fallback: Try dispatching Enter event on input directly via JS
+        const el = document.querySelector('${SELECTORS.composer}')
+        if (el) {
+          el.focus()
+          const enterDown = new KeyboardEvent('keydown', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true
+          })
+          el.dispatchEvent(enterDown)
+          
+          const enterUp = new KeyboardEvent('keyup', {
+            key: 'Enter',
+            code: 'Enter',
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true
+          })
+          el.dispatchEvent(enterUp)
+          return true
+        }
+
         return false
       })()
     `)
+
     if (!sent) {
+      // Native electron keystroke fallback
       host.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Return' })
       host.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Return' })
     }

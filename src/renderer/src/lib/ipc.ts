@@ -17,6 +17,8 @@ declare global {
       skillsList: () => Promise<{ name: string; file: string }[]>
       skillsRead: (file: string) => Promise<string>
       skillsOpenDir: () => Promise<void>
+      skillsCreate: (name: string, content: string) => Promise<{ file: string }>
+      skillsDelete: (file: string) => Promise<{ ok: boolean }>
       winMinimize: () => Promise<void>
       winMaximize: () => Promise<void>
       winClose: () => Promise<void>

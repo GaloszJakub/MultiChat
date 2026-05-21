@@ -1,5 +1,5 @@
-appId: com.multimind.app
-productName: MultiMind
+appId: com.multichat.app
+productName: MultiChat
 copyright: Copyright © 2026
 
 directories:
@@ -11,7 +11,7 @@ files:
   - "!**/*.{md,txt}"
 
 win:
-  executableName: MultiMind
+  executableName: MultiChat
   target:
     - target: nsis
       arch: [x64]

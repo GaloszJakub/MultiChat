@@ -1,6 +1,6 @@
 import React from 'react'
 
-export type Status = 'idle' | 'sending' | 'sent' | 'error' | 'loggedout'
+export type Status = 'idle' | 'sending' | 'sent' | 'error' | 'loggedout' | 'waiting'
 
 interface Props {
   status: Status
@@ -12,6 +12,7 @@ const LABELS: Record<Status, string> = {
   sent: 'Responded',
   error: 'Error',
   loggedout: 'Signed out',
+  waiting: 'Queued…',
 }
 
 const DOT_COLORS: Record<Status, string> = {
@@ -20,6 +21,7 @@ const DOT_COLORS: Record<Status, string> = {
   sent: 'var(--ok)',
   error: 'var(--err)',
   loggedout: 'var(--text-dim)',
+  waiting: 'var(--text-muted)',
 }
 
 export function StatusBadge({ status }: Props) {

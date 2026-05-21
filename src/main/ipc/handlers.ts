@@ -42,6 +42,8 @@ export function registerHandlers(viewManager: ViewManager) {
       const view = viewManager.getView(id)
       if (!adapter || !view) continue
       try {
+        view.webContents.focus()
+        await new Promise(r => setTimeout(r, 200))
         const initRes = await adapter.scrapeResponse(view).catch(() => ({ text: '' }))
         initialTexts.set(id, initRes.text || '')
       } catch {
@@ -55,7 +57,6 @@ export function registerHandlers(viewManager: ViewManager) {
       if (!adapter || !view) { results.push({ id, ok: false, error: 'not found' }); continue }
       try {
         view.webContents.focus()
-        await new Promise(r => setTimeout(r, 150))
         await adapter.submitPrompt(view, text)
         results.push({ id, ok: true })
       } catch (err: any) {
@@ -214,6 +215,54 @@ export function registerHandlers(viewManager: ViewManager) {
     return { ok: true }
   })
 
+  ipcMain.handle(IPC.BROADCAST_SEQUENTIAL, async (_e, text: string, orderedIds: ServiceId[]): Promise<BroadcastResult[]> => {
+    clipboard.writeText(text)
+    const win = BrowserWindow.fromWebContents(_e.sender)
+    const results: BroadcastResult[] = []
+    let contextBlock = ''
+
+    for (let i = 0; i < orderedIds.length; i++) {
+      const id = orderedIds[i]
+      const adapter = adapterMap.get(id)
+      const view = viewManager.getView(id)
+      if (!adapter || !view) {
+        results.push({ id, ok: false, error: 'not found' })
+        continue
+      }
+
+      if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+        win.webContents.send(IPC.SERIAL_PROGRESS, { currentId: id, index: i, total: orderedIds.length, done: false })
+      }
+
+      const fullPrompt = contextBlock
+        ? `Original question:\n"${text}"\n\nPrevious model responses:\n${contextBlock}\n---\nReview the above and provide your own answer. What would you add, correct, or approach differently?`
+        : text
+
+      try {
+        view.webContents.focus()
+        await new Promise(r => setTimeout(r, 200))
+        const initRes = await adapter.scrapeResponse(view).catch(() => ({ text: '' }))
+        await adapter.submitPrompt(view, fullPrompt)
+        results.push({ id, ok: true })
+
+        if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+          const finalResponse = await waitForResponse(win, viewManager, id, initRes.text || '')
+          contextBlock += `\n**${adapter.label}:**\n${finalResponse}\n`
+        }
+      } catch (err: any) {
+        results.push({ id, ok: false, error: err?.message ?? String(err) })
+      }
+
+      await new Promise(r => setTimeout(r, 200))
+    }
+
+    if (win && !win.isDestroyed() && !win.webContents.isDestroyed()) {
+      win.webContents.send(IPC.SERIAL_PROGRESS, { currentId: orderedIds[orderedIds.length - 1], index: orderedIds.length, total: orderedIds.length, done: true })
+    }
+
+    return results
+  })
+
   startLoginPoller(viewManager)
 }
 
@@ -287,7 +336,7 @@ function startResponsePoller(win: BrowserWindow, viewManager: ViewManager, ids: 
         const isStreaming = !result.done
         const elapsed = Date.now() - started
 
-        if (textChanged || isStreaming || elapsed > 5000) {
+        if (textChanged || isStreaming) {
           hasStarted.add(id)
         }
 
@@ -324,6 +373,11 @@ function startResponsePoller(win: BrowserWindow, viewManager: ViewManager, ids: 
           }
           win.webContents.send(IPC.SERVICE_RESPONSE, { id, text: result.text, done: ready })
           if (ready) done.add(id)
+        } else {
+          if (elapsed > 20000) {
+            console.log(`[response:${id}] Start timeout - did not detect start after 20s`)
+            done.add(id)
+          }
         }
       } catch (e) { console.log(`[response:${id}] error:`, e) }
     }
@@ -339,4 +393,85 @@ function startResponsePoller(win: BrowserWindow, viewManager: ViewManager, ids: 
     if (win.isDestroyed() || win.webContents.isDestroyed()) return
     tick()
   }, 100)
+}
+
+function waitForResponse(
+  win: BrowserWindow,
+  viewManager: ViewManager,
+  id: ServiceId,
+  initialText: string,
+): Promise<string> {
+  return new Promise((resolve) => {
+    const started = Date.now()
+    const TIMEOUT = 120_000
+    let lastText = initialText
+    let stableTicks = 0
+    let hasStarted = false
+    let hadStopButton = false
+
+    const tick = async () => {
+      if (win.isDestroyed() || win.webContents.isDestroyed()) {
+        clearInterval(timer)
+        resolve(lastText)
+        return
+      }
+
+      const adapter = adapterMap.get(id)
+      const view = viewManager.getView(id)
+      if (!adapter || !view || view.webContents.isDestroyed()) {
+        clearInterval(timer)
+        resolve(lastText)
+        return
+      }
+
+      try {
+        const result = await adapter.scrapeResponse(view)
+        const textChanged = result.text !== initialText
+        const isStreaming = !result.done
+        const elapsed = Date.now() - started
+
+        if (textChanged || isStreaming) {
+          hasStarted = true
+        }
+
+        if (hasStarted) {
+          if (isStreaming) {
+            hadStopButton = true
+          }
+
+          if (result.text !== lastText) {
+            stableTicks = 0
+          } else {
+            stableTicks++
+          }
+          lastText = result.text
+
+          const ready = hadStopButton
+            ? result.done && stableTicks >= 1 && result.text.length > 0
+            : stableTicks >= 4 && result.text.length > 0 && elapsed > 3000
+
+          // Send partial response to renderer
+          if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+            win.webContents.send(IPC.SERVICE_RESPONSE, { id, text: result.text, done: ready })
+          }
+
+          if (ready || elapsed > TIMEOUT) {
+            clearInterval(timer)
+            resolve(result.text)
+          }
+        } else {
+          if (elapsed > 20000) {
+            console.log(`[waitForResponse:${id}] Start timeout - did not detect start after 20s`)
+            clearInterval(timer)
+            resolve(lastText)
+          }
+        }
+      } catch (e) {
+        console.error(`[waitForResponse:${id}] error:`, e)
+      }
+    }
+
+    const timer = setInterval(tick, 800)
+    setTimeout(tick, 100)
+  })
 }

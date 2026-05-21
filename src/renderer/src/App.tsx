@@ -38,6 +38,8 @@ export default function App() {
   const [enabledIds, setEnabledIds] = useState<Set<ServiceId>>(new Set(DEFAULT_ENABLED))
   const [activeId, setActiveId] = useState<ServiceId>(DEFAULT_ENABLED[0])
   const [statuses, setStatuses] = useState<StatusMap>(INITIAL_STATUSES)
+  const [broadcastMode, setBroadcastMode] = useState<'parallel' | 'sequential'>('parallel')
+  const [serialActiveId, setSerialActiveId] = useState<ServiceId | null>(null)
   const [conversations, setConversations] = useState<Record<ServiceId, Message[]>>(emptyConversations)
   const [selectedSkill, setSelectedSkill] = useState<{ name: string; file: string } | null>(null)
   const [selectedModels, setSelectedModels] = useState<Partial<Record<ServiceId, string>>>(() =>
@@ -119,6 +121,11 @@ export default function App() {
   const handleCardSendRef = useRef(handleCardSend)
   handleCardSendRef.current = handleCardSend
 
+  const enabledIdsRef = useRef(enabledIds)
+  useEffect(() => {
+    enabledIdsRef.current = enabledIds
+  }, [enabledIds])
+
   useEffect(() => {
     const unsub = api.onServiceResponse(({ id, text, done }) => {
       console.log(`[App:onServiceResponse] id: ${id}, done: ${done}, textLength: ${text.length}`)
@@ -144,10 +151,34 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    const unsub = api.onSerialProgress(({ currentId, index, total, done }) => {
+      if (done) {
+        setSerialActiveId(null)
+        setIsSending(false)
+        return
+      }
+      setSerialActiveId(currentId)
+      setStatuses(prev => {
+        const next = { ...prev }
+        const order = SERVICES.filter(s => enabledIdsRef.current.has(s.id)).map(s => s.id)
+        order.forEach((id, idx) => {
+          if (idx > index) {
+            next[id] = 'waiting'
+          } else if (id === currentId) {
+            next[id] = 'sending'
+          }
+        })
+        return next
+      })
+    })
+    return unsub
+  }, [])
+
+  useEffect(() => {
     const unsub = api.onServiceStatus(({ id, loggedIn }) => {
       setStatuses(prev => {
         const cur = prev[id]
-        if (cur === 'sending' || cur === 'sent') return prev
+        if (cur === 'sending' || cur === 'sent' || cur === 'waiting') return prev
         const next = loggedIn ? 'idle' : 'loggedout'
         if (cur === next) return prev
         return { ...prev, [id]: next }
@@ -167,7 +198,7 @@ export default function App() {
 
   const handleSend = useCallback(async () => {
     if (!prompt.trim() || isSending || enabledIds.size === 0) return
-    const ids = [...enabledIds]
+    const ids = SERVICES.filter(s => enabledIds.has(s.id)).map(s => s.id)
     const finalPrompt = skillContent ? `${skillContent}\n\n---\n\n${prompt.trim()}` : prompt.trim()
     setIsSending(true)
 
@@ -184,29 +215,60 @@ export default function App() {
       })
       return next
     })
-    setStatuses(prev => {
-      const next = { ...prev }
-      ids.forEach(id => { next[id] = 'sending' })
-      return next
-    })
-    try {
-      const results = await api.broadcast(finalPrompt, ids)
+
+    if (broadcastMode === 'sequential') {
       setStatuses(prev => {
         const next = { ...prev }
-        results.forEach(r => { next[r.id] = r.ok ? 'sent' : 'error' })
+        ids.forEach((id, idx) => {
+          next[id] = idx === 0 ? 'sending' : 'waiting'
+        })
         return next
       })
-    } catch {
+      try {
+        const results = await api.broadcastSequential(finalPrompt, ids)
+        setStatuses(prev => {
+          const next = { ...prev }
+          results.forEach(r => {
+            next[r.id] = r.ok ? 'sent' : 'error'
+          })
+          return next
+        })
+      } catch {
+        setStatuses(prev => {
+          const next = { ...prev }
+          ids.forEach(id => { next[id] = 'error' })
+          return next
+        })
+      } finally {
+        setIsSending(false)
+        setPrompt('')
+        setSerialActiveId(null)
+      }
+    } else {
       setStatuses(prev => {
         const next = { ...prev }
-        ids.forEach(id => { next[id] = 'error' })
+        ids.forEach(id => { next[id] = 'sending' })
         return next
       })
-    } finally {
-      setIsSending(false)
-      setPrompt('')
+      try {
+        const results = await api.broadcast(finalPrompt, ids)
+        setStatuses(prev => {
+          const next = { ...prev }
+          results.forEach(r => { next[r.id] = r.ok ? 'sent' : 'error' })
+          return next
+        })
+      } catch {
+        setStatuses(prev => {
+          const next = { ...prev }
+          ids.forEach(id => { next[id] = 'error' })
+          return next
+        })
+      } finally {
+        setIsSending(false)
+        setPrompt('')
+      }
     }
-  }, [prompt, isSending, enabledIds, skillContent])
+  }, [prompt, isSending, enabledIds, skillContent, broadcastMode])
 
   const handleSummarize = useCallback(async () => {
     const targetModelId = summaryModelId ?? [...enabledIds][0]
@@ -322,6 +384,8 @@ export default function App() {
               onSelectSummaryModel={id => setSummaryModelId(id)}
               onSummarize={handleSummarize}
               hasResponsesToSummarize={Object.values(latestResponses).some(text => text.trim().length > 0)}
+              broadcastMode={broadcastMode}
+              onSetBroadcastMode={setBroadcastMode}
             />
           </div>
 

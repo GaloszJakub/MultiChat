@@ -11,10 +11,17 @@ const api = {
   openDevTools: (id: ServiceId) => ipcRenderer.invoke(IPC.VIEWS_OPEN_DEVTOOLS, id),
   broadcast: (text: string, enabledIds: ServiceId[]): Promise<BroadcastResult[]> =>
     ipcRenderer.invoke(IPC.BROADCAST_SEND, text, enabledIds),
+  broadcastSequential: (text: string, orderedIds: ServiceId[]): Promise<BroadcastResult[]> =>
+    ipcRenderer.invoke(IPC.BROADCAST_SEQUENTIAL, text, orderedIds),
   onServiceStatus: (cb: (payload: { id: ServiceId; loggedIn: boolean }) => void) => {
     const handler = (_e: any, payload: any) => cb(payload)
     ipcRenderer.on(IPC.SERVICE_STATUS, handler)
     return () => ipcRenderer.removeListener(IPC.SERVICE_STATUS, handler)
+  },
+  onSerialProgress: (cb: (payload: { currentId: ServiceId; index: number; total: number; done: boolean }) => void) => {
+    const handler = (_e: any, payload: any) => cb(payload)
+    ipcRenderer.on(IPC.SERIAL_PROGRESS, handler)
+    return () => ipcRenderer.removeListener(IPC.SERIAL_PROGRESS, handler)
   },
   onServiceResponse: (cb: (payload: { id: ServiceId; text: string; done: boolean }) => void) => {
     const handler = (_e: any, payload: any) => cb(payload)

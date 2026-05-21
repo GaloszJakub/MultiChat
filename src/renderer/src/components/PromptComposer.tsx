@@ -16,9 +16,11 @@ interface Props {
   onSelectSummaryModel: (id: ServiceId) => void
   onSummarize: () => void
   hasResponsesToSummarize: boolean
+  broadcastMode?: 'parallel' | 'sequential'
+  onSetBroadcastMode?: (mode: 'parallel' | 'sequential') => void
 }
 
-export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, isSending, statuses, summaryModelId, onSelectSummaryModel, onSummarize, hasResponsesToSummarize }: Props) {
+export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, isSending, statuses, summaryModelId, onSelectSummaryModel, onSummarize, hasResponsesToSummarize, broadcastMode = 'parallel', onSetBroadcastMode }: Props) {
   const enabledServices = SERVICES.filter(s => enabledIds.has(s.id))
   const taRef = useRef<HTMLTextAreaElement>(null)
 
@@ -178,7 +180,51 @@ export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, 
             }}
           >
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-              <span>Broadcast mode</span>
+              <div style={{
+                display: 'inline-flex',
+                background: 'var(--surface-2)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: 2,
+                gap: 2,
+              }}>
+                <button
+                  type="button"
+                  onClick={() => onSetBroadcastMode?.('parallel')}
+                  style={{
+                    fontSize: 10.5,
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    border: 0,
+                    background: broadcastMode === 'parallel' ? 'var(--surface)' : 'transparent',
+                    color: broadcastMode === 'parallel' ? 'var(--text)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontFamily: 'inherit',
+                    transition: 'all 0.1s ease',
+                  }}
+                >
+                  Parallel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetBroadcastMode?.('sequential')}
+                  style={{
+                    fontSize: 10.5,
+                    padding: '3px 8px',
+                    borderRadius: 6,
+                    border: 0,
+                    background: broadcastMode === 'sequential' ? 'var(--surface)' : 'transparent',
+                    color: broadcastMode === 'sequential' ? 'var(--text)' : 'var(--text-muted)',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    fontFamily: 'inherit',
+                    transition: 'all 0.1s ease',
+                  }}
+                >
+                  Sequential
+                </button>
+              </div>
               <span>·</span>
               <span style={{ color: readyCount === 0 ? 'var(--warn)' : 'var(--text-dim)' }}>
                 {readyCount === 0
@@ -233,7 +279,7 @@ export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, 
             cursor: (!value.trim() || activeCount === 0 || isSending) ? 'not-allowed' : 'pointer',
           }}
         >
-          <span>{isSending ? 'Sending…' : 'Send to all'}</span>
+          <span>{isSending ? 'Sending…' : broadcastMode === 'sequential' ? 'Send sequentially' : 'Send to all'}</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M5 12h14M13 6l6 6-6 6" />
           </svg>

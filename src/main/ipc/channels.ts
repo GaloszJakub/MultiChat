@@ -20,4 +20,6 @@ export const IPC = {
   SKILLS_DELETE: 'skills:delete',
   SERVICE_SET_MODEL: 'service:setModel',
   VIEWS_NEW_CHAT: 'views:newChat',
+  BROADCAST_SEQUENTIAL: 'broadcast:sequential',
+  SERIAL_PROGRESS: 'service:serialProgress',
 } as const

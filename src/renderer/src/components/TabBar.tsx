@@ -68,6 +68,7 @@ export function TabBar({ services, activeId, statuses, onSelect, onLogin, onDevT
               width: 5, height: 5, borderRadius: '50%',
               background: loggedOut ? '#333'
                 : statuses[s.id] === 'sending' ? '#f5a623'
+                : statuses[s.id] === 'waiting' ? '#4a5568'
                 : statuses[s.id] === 'error' ? '#e05252'
                 : active ? s.color : '#444',
               flexShrink: 0,

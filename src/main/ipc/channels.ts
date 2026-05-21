@@ -22,4 +22,12 @@ export const IPC = {
   VIEWS_NEW_CHAT: 'views:newChat',
   BROADCAST_SEQUENTIAL: 'broadcast:sequential',
   SERIAL_PROGRESS: 'service:serialProgress',
+  EXPORT_CONVERSATION: 'export:conversation',
+  HISTORY_SAVE: 'history:save',
+  HISTORY_GET: 'history:get',
+  HISTORY_CLEAR: 'history:clear',
+  API_KEY_SET: 'apiKey:set',
+  API_KEY_GET: 'apiKey:get',
+  API_KEY_DELETE: 'apiKey:delete',
+  API_STREAM: 'api:stream',
 } as const

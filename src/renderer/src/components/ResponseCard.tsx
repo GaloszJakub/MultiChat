@@ -1,4 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { Status } from './StatusBadge'
 import type { ServiceConfig } from '../lib/services'
 import type { Message } from '../App'
@@ -86,13 +89,42 @@ export function ResponseCard({ service, status, messages, enabled, onToggle, onL
               <div style={{
                 fontSize: 13, lineHeight: 1.7,
                 color: msg.role === 'user' ? '#888' : '#d0d0d0',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                wordBreak: 'break-word',
               }}>
-                {msg.text || (msg.role === 'assistant' && (
-                  <span style={{ color: '#333' }}>
-                    {status === 'sending' ? 'Sending…' : 'Waiting for response…'}
-                  </span>
-                ))}
+                {msg.text ? (
+                  <ReactMarkdown
+                    components={{
+                      code({ inline, className, children }) {
+                        const match = /language-(\w+)/.exec(className || '')
+                        return !inline && match ? (
+                          <SyntaxHighlighter style={oneDark} language={match[1]} PreTag="div">
+                            {String(children).replace(/\n$/, '')}
+                          </SyntaxHighlighter>
+                        ) : (
+                          <code style={{ background: '#1a1a1a', padding: '2px 6px', borderRadius: 4, fontSize: 12 }}>
+                            {children}
+                          </code>
+                        )
+                      },
+                      p: ({ children }) => <p style={{ margin: '0 0 8px', lineHeight: 1.7 }}>{children}</p>,
+                      h1: ({ children }) => <h1 style={{ fontSize: 16, fontWeight: 700, margin: '12px 0 6px' }}>{children}</h1>,
+                      h2: ({ children }) => <h2 style={{ fontSize: 14, fontWeight: 700, margin: '10px 0 4px' }}>{children}</h2>,
+                      h3: ({ children }) => <h3 style={{ fontSize: 13, fontWeight: 600, margin: '8px 0 4px' }}>{children}</h3>,
+                      ul: ({ children }) => <ul style={{ paddingLeft: 20, margin: '4px 0' }}>{children}</ul>,
+                      ol: ({ children }) => <ol style={{ paddingLeft: 20, margin: '4px 0' }}>{children}</ol>,
+                      li: ({ children }) => <li style={{ marginBottom: 2 }}>{children}</li>,
+                      blockquote: ({ children }) => <blockquote style={{ borderLeft: '3px solid #333', paddingLeft: 12, margin: '8px 0', color: '#888' }}>{children}</blockquote>,
+                    }}
+                  >
+                    {msg.text}
+                  </ReactMarkdown>
+                ) : (
+                  msg.role === 'assistant' && (
+                    <span style={{ color: '#333' }}>
+                      {status === 'sending' ? 'Sending…' : 'Waiting for response…'}
+                    </span>
+                  )
+                )}
               </div>
             </div>
           ))

@@ -56,6 +56,28 @@ export default function App() {
   const [latestResponses, setLatestResponses] = useState<Record<ServiceId, string>>(() => ({
     chatgpt: '', claude: '', gemini: '', grok: '', kimi: '', deepseek: '',
   }))
+  const [responseTimes, setResponseTimes] = useState<Partial<Record<ServiceId, number>>>({})
+  const [apiKeysActive, setApiKeysActive] = useState<Partial<Record<ServiceId, boolean>>>({})
+  const apiKeysActiveRef = useRef(apiKeysActive)
+  useEffect(() => {
+    apiKeysActiveRef.current = apiKeysActive
+  }, [apiKeysActive])
+
+  useEffect(() => {
+    const checkKeys = async () => {
+      const [hasClaude, hasChatGPT] = await Promise.all([
+        api.apiKeyGet('claude'),
+        api.apiKeyGet('chatgpt')
+      ])
+      setApiKeysActive({
+        claude: hasClaude,
+        chatgpt: hasChatGPT
+      })
+    }
+    checkKeys()
+  }, [showSettings])
+
+  const sendTimeRef = useRef<number>(0)
 
   const activePaneRef = useRef<HTMLDivElement>(null)
   const lastBoundsKey = useRef('')
@@ -72,9 +94,10 @@ export default function App() {
     }
   }, [enabledIds, activeId])
 
-  const isCard = useCallback((id: ServiceId) =>
-    CARD_SERVICES.has(id) && !nativeServices.has(id),
-  [nativeServices])
+  const isCard = useCallback((id: ServiceId) => {
+    if (apiKeysActive[id]) return true
+    return CARD_SERVICES.has(id) && !nativeServices.has(id)
+  }, [nativeServices, apiKeysActive])
 
   const reportBounds = useCallback(() => {
     if (showSettings || isCard(activeId) || modalOpen) {
@@ -105,18 +128,41 @@ export default function App() {
   }, [reportBounds])
 
   const handleCardSend = useCallback(async (id: ServiceId, text: string) => {
-    setConversations(prev => ({
-      ...prev,
-      [id]: [...prev[id], { role: 'user', text }, { role: 'assistant', text: '' }],
-    }))
+    sendTimeRef.current = Date.now()
+    setResponseTimes(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+
+    const isDirect = apiKeysActive[id]
+
+    setConversations(prev => {
+      const currentMessages = prev[id] || []
+      const nextMsgs = [...currentMessages, { role: 'user', text }, { role: 'assistant', text: '' }]
+      
+      if (isDirect) {
+        const formattedMessages = nextMsgs.slice(0, -1).map(m => ({ role: m.role, content: m.text }))
+        api.apiStream(id, formattedMessages, selectedModels[id])
+      }
+      
+      return {
+        ...prev,
+        [id]: nextMsgs
+      }
+    })
+
     setStatuses(prev => ({ ...prev, [id]: 'sending' }))
+
+    if (isDirect) return
+
     try {
       const results = await api.broadcast(text, [id])
       setStatuses(prev => ({ ...prev, [id]: results[0]?.ok ? 'sent' : 'error' }))
     } catch {
       setStatuses(prev => ({ ...prev, [id]: 'error' }))
     }
-  }, [])
+  }, [apiKeysActive, selectedModels])
 
   const handleCardSendRef = useRef(handleCardSend)
   handleCardSendRef.current = handleCardSend
@@ -132,7 +178,7 @@ export default function App() {
       if (text.length > 0) {
         setLatestResponses(prev => ({ ...prev, [id]: text }))
       }
-      if (CARD_SERVICES.has(id)) {
+      if (CARD_SERVICES.has(id) || apiKeysActiveRef.current[id]) {
         setConversations(prev => {
           const msgs = prev[id]
           if (!msgs.length) return prev
@@ -143,8 +189,14 @@ export default function App() {
           return { ...prev, [id]: next }
         })
       }
-      if (done && text.length > 0) {
-        setStatuses(prev => prev[id] === 'sending' || prev[id] === 'sent' ? { ...prev, [id]: 'idle' } : prev)
+      if (done) {
+        setResponseTimes(prev => {
+          if (prev[id]) return prev
+          return { ...prev, [id]: Math.round((Date.now() - sendTimeRef.current) / 100) / 10 }
+        })
+        if (text.length > 0) {
+          setStatuses(prev => prev[id] === 'sending' || prev[id] === 'sent' ? { ...prev, [id]: 'idle' } : prev)
+        }
       }
     })
     return unsub
@@ -202,6 +254,12 @@ export default function App() {
     const finalPrompt = skillContent ? `${skillContent}\n\n---\n\n${prompt.trim()}` : prompt.trim()
     setIsSending(true)
 
+    // Save prompt to SQLite history
+    api.historySave(prompt.trim())
+
+    sendTimeRef.current = Date.now()
+    setResponseTimes({})
+
     setLatestResponses(prev => {
       const next = { ...prev }
       ids.forEach(id => { next[id] = '' })
@@ -210,65 +268,90 @@ export default function App() {
 
     setConversations(prev => {
       const next = { ...prev }
-      ids.filter(id => CARD_SERVICES.has(id)).forEach(id => {
+      ids.filter(id => CARD_SERVICES.has(id) || apiKeysActive[id]).forEach(id => {
         next[id] = [...prev[id], { role: 'user', text: finalPrompt }, { role: 'assistant', text: '' }]
       })
       return next
     })
 
-    if (broadcastMode === 'sequential') {
-      setStatuses(prev => {
-        const next = { ...prev }
-        ids.forEach((id, idx) => {
-          next[id] = idx === 0 ? 'sending' : 'waiting'
-        })
-        return next
-      })
-      try {
-        const results = await api.broadcastSequential(finalPrompt, ids)
+    const directIds = ids.filter(id => apiKeysActive[id])
+    const webviewIds = ids.filter(id => !apiKeysActive[id])
+
+    // Trigger direct API streams in parallel immediately
+    directIds.forEach(id => {
+      const currentMessages = conversations[id] || []
+      const formattedMessages = [
+        ...currentMessages.map(m => ({ role: m.role, content: m.text })),
+        { role: 'user', content: finalPrompt }
+      ]
+      api.apiStream(id, formattedMessages, selectedModels[id])
+    })
+
+    // Set statuses for direct APIs to sending
+    setStatuses(prev => {
+      const next = { ...prev }
+      directIds.forEach(id => { next[id] = 'sending' })
+      return next
+    })
+
+    if (webviewIds.length > 0) {
+      if (broadcastMode === 'sequential') {
         setStatuses(prev => {
           const next = { ...prev }
-          results.forEach(r => {
-            next[r.id] = r.ok ? 'sent' : 'error'
+          webviewIds.forEach((id, idx) => {
+            next[id] = idx === 0 ? 'sending' : 'waiting'
           })
           return next
         })
-      } catch {
+        try {
+          const results = await api.broadcastSequential(finalPrompt, webviewIds)
+          setStatuses(prev => {
+            const next = { ...prev }
+            results.forEach(r => {
+              next[r.id] = r.ok ? 'sent' : 'error'
+            })
+            return next
+          })
+        } catch {
+          setStatuses(prev => {
+            const next = { ...prev }
+            webviewIds.forEach(id => { next[id] = 'error' })
+            return next
+          })
+        } finally {
+          setIsSending(false)
+          setPrompt('')
+          setSerialActiveId(null)
+        }
+      } else {
         setStatuses(prev => {
           const next = { ...prev }
-          ids.forEach(id => { next[id] = 'error' })
+          webviewIds.forEach(id => { next[id] = 'sending' })
           return next
         })
-      } finally {
-        setIsSending(false)
-        setPrompt('')
-        setSerialActiveId(null)
+        try {
+          const results = await api.broadcast(finalPrompt, webviewIds)
+          setStatuses(prev => {
+            const next = { ...prev }
+            results.forEach(r => { next[r.id] = r.ok ? 'sent' : 'error' })
+            return next
+          })
+        } catch {
+          setStatuses(prev => {
+            const next = { ...prev }
+            webviewIds.forEach(id => { next[id] = 'error' })
+            return next
+          })
+        } finally {
+          setIsSending(false)
+          setPrompt('')
+        }
       }
     } else {
-      setStatuses(prev => {
-        const next = { ...prev }
-        ids.forEach(id => { next[id] = 'sending' })
-        return next
-      })
-      try {
-        const results = await api.broadcast(finalPrompt, ids)
-        setStatuses(prev => {
-          const next = { ...prev }
-          results.forEach(r => { next[r.id] = r.ok ? 'sent' : 'error' })
-          return next
-        })
-      } catch {
-        setStatuses(prev => {
-          const next = { ...prev }
-          ids.forEach(id => { next[id] = 'error' })
-          return next
-        })
-      } finally {
-        setIsSending(false)
-        setPrompt('')
-      }
+      setIsSending(false)
+      setPrompt('')
     }
-  }, [prompt, isSending, enabledIds, skillContent, broadcastMode])
+  }, [prompt, isSending, enabledIds, skillContent, broadcastMode, apiKeysActive, selectedModels, conversations])
 
   const handleSummarize = useCallback(async () => {
     const targetModelId = summaryModelId ?? [...enabledIds][0]
@@ -351,6 +434,15 @@ export default function App() {
     api.newChat(id)
   }, [])
 
+  const handleExport = useCallback(async (id: ServiceId) => {
+    const service = SERVICES.find(s => s.id === id)
+    const msgs = conversations[id]
+    if (!msgs.length || !service) return
+    const md = `# Conversation with ${service.label}\n_${new Date().toLocaleString()}_\n\n` +
+      msgs.map(m => `**${m.role === 'user' ? 'You' : service.label}:**\n\n${m.text}`).join('\n\n---\n\n')
+    await api.exportConversation(service.label, md)
+  }, [conversations])
+
   const handleToggleNative = (id: ServiceId) => {
     setNativeServices(prev => {
       const next = new Set(prev)
@@ -361,6 +453,47 @@ export default function App() {
     // reset bounds key so reportBounds fires
     lastBoundsKey.current = ''
   }
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.ctrlKey) return
+
+      // Ctrl+1-6: switch to service N
+      const num = parseInt(e.key)
+      if (num >= 1 && num <= 6) {
+        const service = SERVICES[num - 1]
+        if (service && enabledIds.has(service.id)) {
+          setActiveId(service.id)
+          setShowSettings(false)
+          e.preventDefault()
+        }
+        return
+      }
+
+      // Ctrl+N: new chat
+      if (e.key === 'n' && !e.shiftKey) {
+        handleNewChat(activeId)
+        e.preventDefault()
+        return
+      }
+
+      // Ctrl+L: focus prompt textarea
+      if (e.key === 'l') {
+        document.querySelector<HTMLTextAreaElement>('textarea[placeholder^="Ask"]')?.focus()
+        e.preventDefault()
+        return
+      }
+
+      // Ctrl+Shift+D: devtools
+      if (e.key === 'D' && e.shiftKey) {
+        api.openDevTools(activeId)
+        e.preventDefault()
+        return
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [activeId, enabledIds, handleNewChat])
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#0E0E11', overflow: 'hidden' }}>
@@ -393,16 +526,18 @@ export default function App() {
           <div onMouseDown={onDragStart} style={{ height: 8, flexShrink: 0, cursor: 'row-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', userSelect: 'none' }}>
             <div style={{ width: 48, height: 3, borderRadius: 2, background: '#2a2a2a' }} />
           </div>
-
           {/* Tab bar */}
           <TabBar
             services={enabledServices}
             activeId={activeId}
             statuses={statuses}
+            responseTimes={responseTimes}
             onSelect={id => { setActiveId(id); setShowSettings(false) }}
             onLogin={id => api.cdpLogin(id)}
             onDevTools={id => api.openDevTools(id)}
             onNewChat={handleNewChat}
+            onExport={handleExport}
+            canExport={isCard(activeId) && conversations[activeId]?.length > 0}
             showSettings={showSettings}
             onToggleSettings={() => setShowSettings(v => !v)}
           />

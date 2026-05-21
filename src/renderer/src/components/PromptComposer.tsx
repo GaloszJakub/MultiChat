@@ -36,6 +36,8 @@ export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, 
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+  const [historyIndex, setHistoryIndex] = React.useState(-1)
+  const historyCache = useRef<string[]>([])
 
   useEffect(() => {
     const ta = taRef.current
@@ -44,13 +46,43 @@ export function PromptComposer({ value, onChange, onSend, enabledIds, onToggle, 
     ta.style.height = Math.min(ta.scrollHeight, 84) + 'px'
   }, [value])
 
+  useEffect(() => {
+    // @ts-ignore
+    window.api.historyGet(50).then(rows => {
+      historyCache.current = rows.map(r => r.text)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (value === '') {
+      // @ts-ignore
+      window.api.historyGet(50).then(rows => {
+        historyCache.current = rows.map(r => r.text)
+        setHistoryIndex(-1)
+      })
+    }
+  }, [value])
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault()
       onSend()
     }
+    if (e.key === 'ArrowUp' && e.ctrlKey) {
+      const next = Math.min(historyIndex + 1, historyCache.current.length - 1)
+      setHistoryIndex(next)
+      if (historyCache.current[next] !== undefined) {
+        onChange(historyCache.current[next])
+      }
+      e.preventDefault()
+    }
+    if (e.key === 'ArrowDown' && e.ctrlKey) {
+      const next = Math.max(historyIndex - 1, -1)
+      setHistoryIndex(next)
+      onChange(next === -1 ? '' : historyCache.current[next])
+      e.preventDefault()
+    }
   }
-
   const charCount = value.length
   const activeCount = enabledIds.size
   const readyCount = SERVICES.filter(

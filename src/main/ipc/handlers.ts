@@ -1,8 +1,12 @@
-import { ipcMain, BrowserWindow, clipboard } from 'electron'
+import { ipcMain, BrowserWindow, clipboard, dialog } from 'electron'
 import { listSkills, readSkill, openSkillsDir, createSkill, deleteSkill } from '../skills'
 import { importChromeGoogleCookies } from '../cookie-import'
 import { startCdpLogin } from '../cdp-login'
 import { IPC } from './channels'
+import { savePrompt, getHistory, clearHistory } from '../history'
+import { saveApiKey, getApiKey } from '../api-store'
+import { streamClaude } from '../api-adapters/claude-api'
+import { streamOpenAI } from '../api-adapters/openai-api'
 import type { ViewManager } from '../views/manager'
 import { adapterMap, adapters } from '../services/registry'
 import type { ServiceId, BroadcastResult } from '../services/types'
@@ -261,6 +265,57 @@ export function registerHandlers(viewManager: ViewManager) {
     }
 
     return results
+  })
+
+  ipcMain.handle(IPC.EXPORT_CONVERSATION, async (_e, serviceLabel: string, markdown: string) => {
+    const win = BrowserWindow.fromWebContents(_e.sender)
+    if (!win) return { ok: false }
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Export conversation',
+      defaultPath: `${serviceLabel}-${new Date().toISOString().slice(0, 10)}.md`,
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    })
+    if (result.canceled || !result.filePath) return { ok: false }
+    const fs = require('fs')
+    fs.writeFileSync(result.filePath, markdown, 'utf-8')
+    return { ok: true }
+  })
+
+  ipcMain.handle(IPC.HISTORY_SAVE, (_e, text: string) => savePrompt(text))
+  ipcMain.handle(IPC.HISTORY_GET, (_e, limit?: number) => getHistory(limit))
+  ipcMain.handle(IPC.HISTORY_CLEAR, () => clearHistory())
+
+  ipcMain.handle(IPC.API_KEY_SET, (_e, id: ServiceId, key: string) => saveApiKey(id, key))
+  ipcMain.handle(IPC.API_KEY_GET, (_e, id: ServiceId) => !!getApiKey(id))
+  ipcMain.handle(IPC.API_KEY_DELETE, (_e, id: ServiceId) => saveApiKey(id, ''))
+
+  ipcMain.handle(IPC.API_STREAM, async (_e, id: ServiceId, messages: { role: string; content: string }[], model?: string) => {
+    const key = getApiKey(id)
+    if (!key) return { ok: false, error: 'no api key' }
+    const win = BrowserWindow.fromWebContents(_e.sender)
+    if (!win) return { ok: false }
+
+    let fullText = ''
+    try {
+      const stream = id === 'claude' 
+        ? streamClaude(key, messages, model) 
+        : streamOpenAI(key, messages, model)
+
+      for await (const chunk of stream) {
+        fullText += chunk
+        if (win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false }
+        win.webContents.send(IPC.SERVICE_RESPONSE, { id, text: fullText, done: false })
+      }
+      if (win.isDestroyed() || win.webContents.isDestroyed()) return { ok: false }
+      win.webContents.send(IPC.SERVICE_RESPONSE, { id, text: fullText, done: true })
+      return { ok: true }
+    } catch (err: any) {
+      console.error(`Error streaming direct API response for ${id}:`, err)
+      if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+        win.webContents.send(IPC.SERVICE_RESPONSE, { id, text: fullText + `\n\n[API Error: ${err?.message ?? String(err)}]`, done: true })
+      }
+      return { ok: false, error: err?.message ?? String(err) }
+    }
   })
 
   startLoginPoller(viewManager)

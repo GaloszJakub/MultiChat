@@ -1,5 +1,6 @@
 import React from 'react'
 import { ServiceLogo } from './ServiceLogo'
+import { SERVICES } from '../lib/services'
 import type { ServiceConfig } from '../lib/services'
 import type { ServiceId } from '../../../main/services/types'
 import type { Status } from './StatusBadge'
@@ -8,15 +9,18 @@ interface Props {
   services: ServiceConfig[]
   activeId: ServiceId
   statuses: Record<ServiceId, Status>
+  responseTimes?: Partial<Record<ServiceId, number>>
   onSelect: (id: ServiceId) => void
   onLogin: (id: ServiceId) => void
   onDevTools: (id: ServiceId) => void
   onNewChat: (id: ServiceId) => void
+  onExport: (id: ServiceId) => void
+  canExport?: boolean
   showSettings: boolean
   onToggleSettings: () => void
 }
 
-export function TabBar({ services, activeId, statuses, onSelect, onLogin, onDevTools, onNewChat, showSettings, onToggleSettings }: Props) {
+export function TabBar({ services, activeId, statuses, responseTimes, onSelect, onLogin, onDevTools, onNewChat, onExport, canExport, showSettings, onToggleSettings }: Props) {
   return (
     <div style={{
       display: 'flex',
@@ -30,9 +34,11 @@ export function TabBar({ services, activeId, statuses, onSelect, onLogin, onDevT
       {services.map(s => {
         const active = s.id === activeId
         const loggedOut = statuses[s.id] === 'loggedout'
+        const idx = SERVICES.findIndex(x => x.id === s.id)
         return (
           <button
             key={s.id}
+            title={idx !== -1 ? `Ctrl+${idx + 1}` : undefined}
             onClick={() => onSelect(s.id)}
             style={{
               display: 'flex',
@@ -62,7 +68,12 @@ export function TabBar({ services, activeId, statuses, onSelect, onLogin, onDevT
             }}>
               <ServiceLogo id={s.id} size={9} color={active ? s.color : loggedOut ? '#444' : '#666'} />
             </div>
-            {s.label}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+              <span style={{ lineHeight: 1.1 }}>{s.label}</span>
+              {responseTimes?.[s.id] && (
+                <span style={{ fontSize: 9, color: '#666', marginTop: 1, lineHeight: 1 }}>{responseTimes[s.id]}s</span>
+              )}
+            </div>
             {/* Status dot */}
             <div style={{
               width: 5, height: 5, borderRadius: '50%',
@@ -129,6 +140,22 @@ export function TabBar({ services, activeId, statuses, onSelect, onLogin, onDevT
                 <path d="M2 11h8"/>
               </svg>
             </button>
+            {canExport && (
+              <button
+                onClick={() => onExport(s.id)}
+                title="Export conversation"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 22, height: 22, borderRadius: 4,
+                  border: '1px solid #222', background: 'transparent',
+                  color: '#444', cursor: 'pointer',
+                }}
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 1v6M3 5l3 3 3-3M1 11h10"/>
+                </svg>
+              </button>
+            )}
             <button
               onClick={() => onDevTools(s.id)}
               title="DevTools"

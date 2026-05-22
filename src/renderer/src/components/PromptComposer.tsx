@@ -193,7 +193,7 @@ export function PromptComposer({
     const ta = taRef.current
     if (!ta) return
     ta.style.height = 'auto'
-    ta.style.height = Math.min(ta.scrollHeight, 84) + 'px'
+    ta.style.height = Math.min(ta.scrollHeight, 300) + 'px'
   }, [value])
 
   useEffect(() => {
@@ -526,13 +526,13 @@ export function PromptComposer({
               background: 'transparent',
               border: 0,
               outline: 0,
-              resize: 'none',
+              resize: 'vertical',
               padding: '11px 14px',
               color: 'var(--text)',
               fontSize: 14,
               lineHeight: 1.5,
               minHeight: 44,
-              maxHeight: 84,
+              maxHeight: 300,
               fontFamily: 'inherit',
             }}
           />

@@ -9,12 +9,6 @@ const SERVICE_CSS: Record<ServiceId, string> = {
     ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
   `,
   claude: `
-    /* Hide left sidebar */
-    nav[aria-label="Main navigation"], aside, [class*="Sidebar"], [class*="sidebar"] { display: none !important; }
-    /* Make main content fill width */
-    main { max-width: 100% !important; }
-    /* Hide top header nav links */
-    header nav { display: none !important; }
     ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
   `,
   gemini: `

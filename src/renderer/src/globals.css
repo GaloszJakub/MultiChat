@@ -72,3 +72,31 @@ textarea {
   0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
   30% { transform: translateY(-3px); opacity: 1; }
 }
+
+/* Sleek, premium scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+  transition: background 0.15s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
+
+textarea::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+}
+
+textarea::-webkit-scrollbar-thumb:hover {
+  background: #4D6BFE;
+}

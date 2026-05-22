@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react'
 import { api } from '../lib/ipc'
 import { BrandMark } from './BrandMark'
 
-export function TitleBar() {
+interface Skill {
+  name: string
+  file: string
+}
+
+interface TitleBarProps {
+  selectedSkill: Skill | null
+}
+
+export function TitleBar({ selectedSkill }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false)
 
   useEffect(() => {
@@ -42,6 +51,25 @@ export function TitleBar() {
       <div style={{ flex: 1, paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: '#555', letterSpacing: '0.02em' }}>
         <BrandMark size={16} />
         <span>MultiChat</span>
+        {selectedSkill && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'rgba(77, 107, 254, 0.15)',
+            border: '1px solid rgba(77, 107, 254, 0.3)',
+            borderRadius: 12,
+            padding: '2px 8px',
+            marginLeft: 8,
+            color: '#a0b0ff',
+            fontSize: 10.5,
+            fontWeight: 600,
+            WebkitAppRegion: 'no-drag' as any,
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4D6BFE', display: 'inline-block' }} />
+            <span>Active Skill: {selectedSkill.name}</span>
+          </div>
+        )}
       </div>
 
       {/* Windows controls */}

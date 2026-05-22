@@ -48,9 +48,8 @@ export default function App() {
     )
   )
   const [skillContent, setSkillContent] = useState<string>('')
-  const [topHeight, setTopHeight] = useState(220)
   const [showSettings, setShowSettings] = useState(false)
-  const [nativeServices, setNativeServices] = useState<Set<ServiceId>>(new Set())
+  const [nativeServices, setNativeServices] = useState<Set<ServiceId>>(() => new Set(SERVICES.map(s => s.id)))
   const [geminiThinking, setGeminiThinking] = useState<'standard' | 'extended'>('standard')
   const [summaryModelId, setSummaryModelId] = useState<ServiceId | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -103,9 +102,6 @@ export default function App() {
 
   const activePaneRef = useRef<HTMLDivElement>(null)
   const lastBoundsKey = useRef('')
-  const dragging = useRef(false)
-  const dragStartY = useRef(0)
-  const dragStartH = useRef(0)
   const containerRef = useRef<HTMLDivElement>(null)
 
   // When enabled services change, ensure activeId is still valid
@@ -430,26 +426,6 @@ export default function App() {
     handleCardSend(targetModelId, summaryPrompt)
   }, [enabledIds, conversations, latestResponses, summaryModelId, handleCardSend])
 
-  const onDragStart = (e: React.MouseEvent) => {
-    e.preventDefault()
-    dragging.current = true
-    dragStartY.current = e.clientY
-    dragStartH.current = topHeight
-    const onMove = (ev: MouseEvent) => {
-      if (!dragging.current) return
-      const containerH = containerRef.current?.clientHeight ?? window.innerHeight
-      const newH = Math.max(120, Math.min(containerH - 160, dragStartH.current + (ev.clientY - dragStartY.current)))
-      setTopHeight(newH)
-    }
-    const onUp = () => {
-      dragging.current = false
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }
-
   const handleSkillSelect = useCallback(async (skill: { name: string; file: string } | null) => {
     setSelectedSkill(skill)
     if (skill) {
@@ -534,7 +510,7 @@ export default function App() {
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: '#0E0E11', overflow: 'hidden' }}>
-      <TitleBar />
+      <TitleBar selectedSkill={selectedSkill} />
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
         <SkillsSidebar
@@ -547,7 +523,7 @@ export default function App() {
 
         <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {/* Composer */}
-          <div style={{ height: topHeight, flexShrink: 0, overflow: 'hidden' }}>
+          <div style={{ flexShrink: 0, overflow: 'hidden' }}>
             <PromptComposer
               value={prompt}
               onChange={setPrompt}
@@ -565,11 +541,6 @@ export default function App() {
               serviceOrder={serviceOrder}
               onUpdateServiceOrder={setServiceOrder}
             />
-          </div>
-
-          {/* Drag handle */}
-          <div onMouseDown={onDragStart} style={{ height: 8, flexShrink: 0, cursor: 'row-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', userSelect: 'none' }}>
-            <div style={{ width: 48, height: 3, borderRadius: 2, background: '#2a2a2a' }} />
           </div>
           {/* Tab bar */}
           <TabBar

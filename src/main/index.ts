@@ -46,6 +46,7 @@ function createWindow() {
     minHeight: 600,
     frame: false,
     titleBarStyle: 'hidden',
+    icon: join(__dirname, '../../resources/icon.png'),
     backgroundColor: '#0E0E11',
     show: false,
     webPreferences: {
@@ -72,6 +73,7 @@ function createWindow() {
   }
 
   win.once('ready-to-show', () => {
+    win!.maximize()
     win!.show()
     // Debug shortcuts: Ctrl+Shift+1-4 opens devtools for each BrowserView
     const ids = ['chatgpt', 'claude', 'gemini', 'grok'] as const

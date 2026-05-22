@@ -16,7 +16,6 @@ interface Props {
 
 export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle, showSettings, onToggleSettings }: Props) {
   const [skills, setSkills] = useState<Skill[]>([])
-  const [preview, setPreview] = useState<string>('')
   const [hoveredFile, setHoveredFile] = useState<string | null>(null)
   
   // Modal states
@@ -44,11 +43,8 @@ export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle, showSett
   const handleSelect = async (skill: Skill) => {
     if (selectedSkill?.file === skill.file) {
       onSelect(null)
-      setPreview('')
       return
     }
-    const content = await api.skillsRead(skill.file)
-    setPreview(content)
     onSelect(skill)
   }
 
@@ -86,7 +82,6 @@ export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle, showSett
         if (selectedSkill?.file === editingSkill.file) {
           const newFile = `${safeNewName}.md`
           onSelect({ name: skillName.trim(), file: newFile })
-          setPreview(skillContent.trim())
         }
       } else {
         await api.skillsCreate(skillName.trim(), skillContent.trim())
@@ -112,7 +107,6 @@ export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle, showSett
       await api.skillsDelete(skillToDelete.file)
       if (selectedSkill?.file === skillToDelete.file) {
         onSelect(null)
-        setPreview('')
       }
       await reload()
       setDeleteConfirmOpen(false)
@@ -306,69 +300,7 @@ export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle, showSett
         })}
       </div>
 
-      {/* Preview */}
-      {preview && (
-        <div style={{
-          borderTop: '1px solid var(--hairline)',
-          padding: 12,
-          flexShrink: 0,
-          background: 'linear-gradient(180deg, transparent, rgba(255,255,255,0.005))',
-        }}>
-          <div style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: 'var(--text-muted)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            marginBottom: 6,
-            userSelect: 'none',
-          }}>
-            Preview
-          </div>
-          <div style={{
-            background: 'var(--surface-2)',
-            border: '1px solid var(--border)',
-            borderRadius: 8,
-            padding: '8px 10px',
-            fontSize: 11,
-            color: 'var(--text-muted)',
-            lineHeight: 1.5,
-            maxHeight: 110,
-            overflowY: 'auto',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-          }}>
-            {preview.slice(0, 300)}{preview.length > 300 ? '…' : ''}
-          </div>
-        </div>
-      )}
 
-      {/* Active indicator */}
-      {selectedSkill && (
-        <div style={{
-          borderTop: '1px solid rgba(77, 107, 254, 0.2)',
-          padding: '10px 14px',
-          background: 'rgba(77, 107, 254, 0.04)',
-          fontSize: 11,
-          fontWeight: 600,
-          color: '#a0b0ff',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          flexShrink: 0,
-          userSelect: 'none',
-        }}>
-          <span style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: '#4D6BFE',
-            boxShadow: '0 0 6px #4D6BFE',
-            display: 'block'
-          }} />
-          <span>Active: {selectedSkill.name}</span>
-        </div>
-      )}
 
       {/* Bottom buttons */}
       <div style={{ padding: '12px', borderTop: '1px solid var(--hairline)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>

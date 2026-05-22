@@ -5,7 +5,7 @@ export const SELECTORS = {
   composer: 'textarea',
   sendButton: 'button[type="submit"], button[aria-label*="Send"]',
   loginIndicator: 'textarea[placeholder*="Grok"], textarea[placeholder*="Ask"], textarea[placeholder*="Message"], textarea[placeholder*="message"]',
-  response: '[class*="message"]:last-of-type [class*="prose"], [class*="assistant"]:last-of-type',
+  response: '[class*="message"] [class*="prose"], [class*="assistant"]',
   stopButton: 'button[aria-label*="Stop"], button[aria-label*="stop"]',
 }
 
@@ -62,7 +62,8 @@ export const grokAdapter: ServiceAdapter = {
   async scrapeResponse(host: WebContentsHost): Promise<ScrapeResult> {
     return host.webContents.executeJavaScript(`
       (() => {
-        const el = document.querySelector('${SELECTORS.response}')
+        const all = document.querySelectorAll('${SELECTORS.response}')
+        const el = all[all.length - 1]
         const streaming = !!document.querySelector('${SELECTORS.stopButton}')
         return { text: el?.innerText ?? '', done: !streaming }
       })()

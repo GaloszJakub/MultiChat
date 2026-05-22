@@ -38,8 +38,8 @@ const api = {
   newChat: (id: ServiceId) => ipcRenderer.invoke(IPC.VIEWS_NEW_CHAT, id),
   exportConversation: (serviceLabel: string, markdown: string): Promise<{ ok: boolean }> =>
     ipcRenderer.invoke(IPC.EXPORT_CONVERSATION, serviceLabel, markdown),
-  setModel: (id: ServiceId, model: string): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke(IPC.SERVICE_SET_MODEL, id, model),
+  setModel: (id: ServiceId, model: string, thinking?: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC.SERVICE_SET_MODEL, id, model, thinking),
   historySave: (text: string) => ipcRenderer.invoke(IPC.HISTORY_SAVE, text),
   historyGet: (limit?: number): Promise<{ id: number; text: string; created_at: number }[]> =>
     ipcRenderer.invoke(IPC.HISTORY_GET, limit),
@@ -47,8 +47,8 @@ const api = {
   apiKeySet: (id: ServiceId, key: string): Promise<void> => ipcRenderer.invoke(IPC.API_KEY_SET, id, key),
   apiKeyGet: (id: ServiceId): Promise<boolean> => ipcRenderer.invoke(IPC.API_KEY_GET, id),
   apiKeyDelete: (id: ServiceId): Promise<void> => ipcRenderer.invoke(IPC.API_KEY_DELETE, id),
-  apiStream: (id: ServiceId, messages: { role: string; content: string }[], model?: string): Promise<{ ok: boolean; error?: string }> =>
-    ipcRenderer.invoke(IPC.API_STREAM, id, messages, model),
+  apiStream: (id: ServiceId, messages: { role: string; content: string }[], model?: string, thinking?: string): Promise<{ ok: boolean; error?: string }> =>
+    ipcRenderer.invoke(IPC.API_STREAM, id, messages, model, thinking),
 
   winMinimize: () => ipcRenderer.invoke(IPC.WIN_MINIMIZE),
   winMaximize: () => ipcRenderer.invoke(IPC.WIN_MAXIMIZE),

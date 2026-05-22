@@ -13,7 +13,7 @@ import type { Status } from './components/StatusBadge'
 
 export type Message = { role: 'user' | 'assistant'; text: string }
 
-const CARD_SERVICES = new Set<ServiceId>(['claude', 'gemini'])
+const CARD_SERVICES = new Set<ServiceId>(['claude', 'gemini', 'chatgpt', 'grok', 'kimi', 'deepseek'])
 
 type StatusMap = Record<ServiceId, Status>
 
@@ -50,7 +50,8 @@ export default function App() {
   const [skillContent, setSkillContent] = useState<string>('')
   const [topHeight, setTopHeight] = useState(220)
   const [showSettings, setShowSettings] = useState(false)
-  const [nativeServices, setNativeServices] = useState<Set<ServiceId>>(new Set([...CARD_SERVICES]))
+  const [nativeServices, setNativeServices] = useState<Set<ServiceId>>(new Set())
+  const [geminiThinking, setGeminiThinking] = useState<'standard' | 'extended'>('standard')
   const [summaryModelId, setSummaryModelId] = useState<ServiceId | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [latestResponses, setLatestResponses] = useState<Record<ServiceId, string>>(() => ({
@@ -58,6 +59,27 @@ export default function App() {
   }))
   const [responseTimes, setResponseTimes] = useState<Partial<Record<ServiceId, number>>>({})
   const [apiKeysActive, setApiKeysActive] = useState<Partial<Record<ServiceId, boolean>>>({})
+  const [serviceOrder, setServiceOrder] = useState<ServiceId[]>(() => {
+    const saved = localStorage.getItem('multichat:service_order')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as ServiceId[]
+        const valid = parsed.filter(id => SERVICES.some(s => s.id === id))
+        const missing = SERVICES.map(s => s.id).filter(id => !valid.includes(id))
+        return [...valid, ...missing]
+      } catch (e) {
+        // ignore
+      }
+    }
+    return SERVICES.map(s => s.id)
+  })
+
+  const serviceOrderRef = useRef(serviceOrder)
+  useEffect(() => {
+    serviceOrderRef.current = serviceOrder
+    localStorage.setItem('multichat:service_order', JSON.stringify(serviceOrder))
+  }, [serviceOrder])
+
   const apiKeysActiveRef = useRef(apiKeysActive)
   useEffect(() => {
     apiKeysActiveRef.current = apiKeysActive
@@ -65,14 +87,14 @@ export default function App() {
 
   useEffect(() => {
     const checkKeys = async () => {
-      const [hasClaude, hasChatGPT] = await Promise.all([
-        api.apiKeyGet('claude'),
-        api.apiKeyGet('chatgpt')
-      ])
-      setApiKeysActive({
-        claude: hasClaude,
-        chatgpt: hasChatGPT
+      const results = await Promise.all(
+        SERVICES.map(s => api.apiKeyGet(s.id))
+      )
+      const keysActive: Partial<Record<ServiceId, boolean>> = {}
+      SERVICES.forEach((s, idx) => {
+        keysActive[s.id] = results[idx]
       })
+      setApiKeysActive(keysActive)
     }
     checkKeys()
   }, [showSettings])
@@ -89,10 +111,21 @@ export default function App() {
   // When enabled services change, ensure activeId is still valid
   useEffect(() => {
     if (!enabledIds.has(activeId)) {
-      const first = SERVICES.find(s => enabledIds.has(s.id))
-      if (first) setActiveId(first.id)
+      const first = serviceOrder.find(id => enabledIds.has(id))
+      if (first) setActiveId(first)
     }
-  }, [enabledIds, activeId])
+  }, [enabledIds, activeId, serviceOrder])
+
+  // Sync selected model to webview whenever activeId, selectedModels, nativeServices, apiKeysActive, or geminiThinking changes
+  useEffect(() => {
+    if (activeId) {
+      const model = selectedModels[activeId]
+      if (model && !apiKeysActive[activeId]) {
+        api.setModel(activeId, model, activeId === 'gemini' ? geminiThinking : undefined)
+      }
+    }
+  }, [activeId, selectedModels, nativeServices, apiKeysActive, geminiThinking])
+
 
   const isCard = useCallback((id: ServiceId) => {
     if (apiKeysActive[id]) return true
@@ -143,7 +176,7 @@ export default function App() {
       
       if (isDirect) {
         const formattedMessages = nextMsgs.slice(0, -1).map(m => ({ role: m.role, content: m.text }))
-        api.apiStream(id, formattedMessages, selectedModels[id])
+        api.apiStream(id, formattedMessages, selectedModels[id], id === 'gemini' ? geminiThinking : undefined)
       }
       
       return {
@@ -162,7 +195,7 @@ export default function App() {
     } catch {
       setStatuses(prev => ({ ...prev, [id]: 'error' }))
     }
-  }, [apiKeysActive, selectedModels])
+  }, [apiKeysActive, selectedModels, geminiThinking])
 
   const handleCardSendRef = useRef(handleCardSend)
   handleCardSendRef.current = handleCardSend
@@ -212,7 +245,7 @@ export default function App() {
       setSerialActiveId(currentId)
       setStatuses(prev => {
         const next = { ...prev }
-        const order = SERVICES.filter(s => enabledIdsRef.current.has(s.id)).map(s => s.id)
+        const order = serviceOrderRef.current.filter(id => enabledIdsRef.current.has(id))
         order.forEach((id, idx) => {
           if (idx > index) {
             next[id] = 'waiting'
@@ -242,15 +275,19 @@ export default function App() {
   const handleToggle = useCallback((id: ServiceId) => {
     setEnabledIds(prev => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) {
+        if (next.size <= 1) return prev
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
       return next
     })
   }, [])
 
   const handleSend = useCallback(async () => {
     if (!prompt.trim() || isSending || enabledIds.size === 0) return
-    const ids = SERVICES.filter(s => enabledIds.has(s.id)).map(s => s.id)
+    const ids = serviceOrder.filter(id => enabledIds.has(id))
     const finalPrompt = skillContent ? `${skillContent}\n\n---\n\n${prompt.trim()}` : prompt.trim()
     setIsSending(true)
 
@@ -284,7 +321,7 @@ export default function App() {
         ...currentMessages.map(m => ({ role: m.role, content: m.text })),
         { role: 'user', content: finalPrompt }
       ]
-      api.apiStream(id, formattedMessages, selectedModels[id])
+      api.apiStream(id, formattedMessages, selectedModels[id], id === 'gemini' ? geminiThinking : undefined)
     })
 
     // Set statuses for direct APIs to sending
@@ -351,7 +388,7 @@ export default function App() {
       setIsSending(false)
       setPrompt('')
     }
-  }, [prompt, isSending, enabledIds, skillContent, broadcastMode, apiKeysActive, selectedModels, conversations])
+  }, [prompt, isSending, enabledIds, skillContent, broadcastMode, apiKeysActive, selectedModels, conversations, geminiThinking])
 
   const handleSummarize = useCallback(async () => {
     const targetModelId = summaryModelId ?? [...enabledIds][0]
@@ -423,7 +460,7 @@ export default function App() {
     }
   }, [])
 
-  const enabledServices = SERVICES.filter(s => enabledIds.has(s.id))
+  const enabledServices = serviceOrder.filter(id => enabledIds.has(id)).map(id => SERVICES.find(s => s.id === id)!)
   const activeService = SERVICES.find(s => s.id === activeId)
   const activeIsCard = isCard(activeId)
   const activeModels = SERVICE_MODELS[activeId]
@@ -500,7 +537,13 @@ export default function App() {
       <TitleBar />
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
-        <SkillsSidebar selectedSkill={selectedSkill} onSelect={handleSkillSelect} onModalToggle={setModalOpen} />
+        <SkillsSidebar
+          selectedSkill={selectedSkill}
+          onSelect={handleSkillSelect}
+          onModalToggle={setModalOpen}
+          showSettings={showSettings}
+          onToggleSettings={() => setShowSettings(v => !v)}
+        />
 
         <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {/* Composer */}
@@ -519,6 +562,8 @@ export default function App() {
               hasResponsesToSummarize={Object.values(latestResponses).some(text => text.trim().length > 0)}
               broadcastMode={broadcastMode}
               onSetBroadcastMode={setBroadcastMode}
+              serviceOrder={serviceOrder}
+              onUpdateServiceOrder={setServiceOrder}
             />
           </div>
 
@@ -538,8 +583,9 @@ export default function App() {
             onNewChat={handleNewChat}
             onExport={handleExport}
             canExport={isCard(activeId) && conversations[activeId]?.length > 0}
-            showSettings={showSettings}
-            onToggleSettings={() => setShowSettings(v => !v)}
+            isCard={isCard(activeId)}
+            isApiKeyActive={!!apiKeysActive[activeId]}
+            onToggleViewMode={handleToggleNative}
           />
 
           {/* Model picker row (only for active service that has models, only in card mode) */}
@@ -555,6 +601,37 @@ export default function App() {
                   api.setModel(activeId, v)
                 }}
               />
+
+              {activeId === 'gemini' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 16 }}>
+                  <span style={{ fontSize: 10, color: '#444', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Thinking</span>
+                  <div style={{ display: 'flex', background: '#111', border: '1px solid #222', borderRadius: 5, padding: 2 }}>
+                    {(['standard', 'extended'] as const).map(mode => {
+                      const active = geminiThinking === mode
+                      return (
+                        <button
+                          key={mode}
+                          onClick={() => setGeminiThinking(mode)}
+                          style={{
+                            fontSize: 9,
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            border: 'none',
+                            background: active ? activeService?.color + '22' : 'transparent',
+                            color: active ? activeService?.color : '#555',
+                            fontWeight: active ? 600 : 400,
+                            cursor: 'pointer',
+                            fontFamily: 'inherit',
+                            transition: 'all 0.15s',
+                          }}
+                        >
+                          {mode.toUpperCase()}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -567,6 +644,10 @@ export default function App() {
               <SettingsPanel
                 nativeServices={nativeServices}
                 onToggleNative={handleToggleNative}
+                onClose={() => setShowSettings(false)}
+                onApiKeyChange={(id, hasKey) => {
+                  setApiKeysActive(prev => ({ ...prev, [id]: hasKey }))
+                }}
               />
             ) : activeIsCard && activeService ? (
               <ResponseCard

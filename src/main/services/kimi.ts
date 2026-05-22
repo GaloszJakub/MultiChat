@@ -4,7 +4,7 @@ export const SELECTORS = {
   composer: '[contenteditable="true"], .chat-input-editor, [data-lexical-editor="true"]',
   sendButton: '.send-button-container, button[class*="send"], .send-button-container button',
   loginIndicator: '#msh-chatinput-editor',
-  response: '.chat-message--assistant:last-of-type .content, [class*="assistant"]:last-of-type [class*="content"]',
+  response: '.chat-message--assistant .content, [class*="assistant"] [class*="content"]',
   stopButton: 'button[aria-label*="Stop"], button[aria-label*="stop"], button[class*="stop"]',
 }
 

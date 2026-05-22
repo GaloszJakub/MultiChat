@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { api } from '../lib/ipc'
+import { BrandMark } from './BrandMark'
 
 export function TitleBar() {
   const [maximized, setMaximized] = useState(false)
@@ -38,8 +39,9 @@ export function TitleBar() {
       flexShrink: 0,
     }}>
       {/* App title */}
-      <div style={{ flex: 1, paddingLeft: 12, fontSize: 12, fontWeight: 600, color: '#555', letterSpacing: '0.02em' }}>
-        MultiChat
+      <div style={{ flex: 1, paddingLeft: 12, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, color: '#555', letterSpacing: '0.02em' }}>
+        <BrandMark size={16} />
+        <span>MultiChat</span>
       </div>
 
       {/* Windows controls */}

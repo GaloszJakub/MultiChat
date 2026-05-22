@@ -1,13 +1,17 @@
 export async function* streamOpenAI(
   apiKey: string,
   messages: { role: string; content: string }[],
-  model = 'gpt-4o'
+  model = 'gpt-4o',
+  baseUrl = 'https://api.openai.com/v1',
+  extraHeaders: Record<string, string> = {}
 ): AsyncGenerator<string> {
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const url = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      ...extraHeaders
     },
     body: JSON.stringify({
       model,
@@ -21,7 +25,7 @@ export async function* streamOpenAI(
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '')
-    throw new Error(`OpenAI API returned status ${res.status}: ${errText || res.statusText}`)
+    throw new Error(`API returned status ${res.status}: ${errText || res.statusText}`)
   }
 
   const reader = res.body!.getReader()

@@ -5,7 +5,7 @@ export const SELECTORS = {
   composer: '#chat-input, textarea[placeholder*="Message"], textarea[placeholder*="message"], textarea',
   sendButton: 'button[aria-label="Send message"], div[role="button"][aria-label*="Send"], button[class*="send"], button.send-button',
   loginIndicator: '#chat-input',
-  response: '[class*="ds-markdown"]:last-of-type, [class*="message-content"]:last-of-type',
+  response: '[class*="ds-markdown"], [class*="message-content"]',
   stopButton: 'button[aria-label="Stop"], div[role="button"][aria-label*="Stop"]',
 }
 
@@ -19,13 +19,22 @@ export const deepseekAdapter: ServiceAdapter = {
 
   async isLoggedIn(host: WebContentsHost): Promise<boolean> {
     try {
+      const ses = session.fromPartition('persist:deepseek')
+      const cookies = await ses.cookies.get({})
+      try {
+        const fs = require('fs')
+        fs.writeFileSync('C:\\Users\\Kuba\\Documents\\GitHub\\MultiChat\\debug_cookies.json', JSON.stringify(cookies.map(c => ({ name: c.name, domain: c.domain })), null, 2))
+      } catch (e) {}
+      const hasCookie = cookies.some(c => c.name === 'ds_session_id' && c.domain?.includes('deepseek.com'))
+      if (hasCookie) return true
+
       const url = host.webContents.getURL()
       if (!url || url === 'about:blank') return false
       if (url.includes('/sign-in') || url.includes('/login')) return false
 
       return await host.webContents.executeJavaScript(`
         (() => {
-          const hasInput = !!document.querySelector('#chat-input')
+          const hasInput = !!document.querySelector('#chat-input, textarea')
           const hasAvatar = !!document.querySelector('[class*="avatar"], [class*="profile"]')
           return hasInput || hasAvatar
         })()

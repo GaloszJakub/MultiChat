@@ -10,9 +10,11 @@ interface Props {
   selectedSkill: Skill | null
   onSelect: (skill: Skill | null) => void
   onModalToggle?: (open: boolean) => void
+  showSettings?: boolean
+  onToggleSettings?: () => void
 }
 
-export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle }: Props) {
+export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle, showSettings, onToggleSettings }: Props) {
   const [skills, setSkills] = useState<Skill[]>([])
   const [preview, setPreview] = useState<string>('')
   const [hoveredFile, setHoveredFile] = useState<string | null>(null)
@@ -142,22 +144,6 @@ export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle }: Props)
         position: 'relative',
       }}
     >
-      {/* Brand Header */}
-      <div style={{
-        padding: '16px 16px 14px',
-        borderBottom: '1px solid var(--hairline)',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 10,
-        flexShrink: 0,
-        userSelect: 'none',
-      }}>
-        <BrandMark />
-        <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
-          <div style={{ fontWeight: 700, fontSize: 15, color: '#fff', letterSpacing: '-0.01em' }}>MultiChat</div>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Ask everyone at once</div>
-        </div>
-      </div>
 
       {/* Header */}
       <div style={{
@@ -384,8 +370,8 @@ export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle }: Props)
         </div>
       )}
 
-      {/* Create button */}
-      <div style={{ padding: '12px', borderTop: '1px solid var(--hairline)', flexShrink: 0 }}>
+      {/* Bottom buttons */}
+      <div style={{ padding: '12px', borderTop: '1px solid var(--hairline)', flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
         <button
           onClick={openCreateModal}
           style={{
@@ -420,6 +406,42 @@ export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle }: Props)
             <line x1="6" y1="2" x2="6" y2="10"/><line x1="2" y1="6" x2="10" y2="6"/>
           </svg>
           New Skill
+        </button>
+        <button
+          onClick={onToggleSettings}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            width: '100%',
+            padding: '8px 0',
+            background: showSettings ? 'rgba(255,255,255,0.04)' : 'transparent',
+            border: showSettings ? '1px solid rgba(255,255,255,0.1)' : '1px solid transparent',
+            borderRadius: 8,
+            cursor: 'pointer',
+            color: showSettings ? 'var(--text)' : 'var(--text-muted)',
+            fontSize: 11.5,
+            fontWeight: 600,
+            fontFamily: 'inherit',
+            transition: 'all 0.15s ease',
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = 'var(--text)'
+            e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+            e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = showSettings ? 'var(--text)' : 'var(--text-muted)'
+            e.currentTarget.style.background = showSettings ? 'rgba(255,255,255,0.04)' : 'transparent'
+            e.currentTarget.style.borderColor = showSettings ? 'rgba(255,255,255,0.1)' : 'transparent'
+          }}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <circle cx="8" cy="8" r="2.5"/>
+            <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06"/>
+          </svg>
+          Settings
         </button>
       </div>
 
@@ -661,36 +683,4 @@ export function SkillsSidebar({ selectedSkill, onSelect, onModalToggle }: Props)
   )
 }
 
-function BrandMark() {
-  return (
-    <div
-      style={{
-        width: 30,
-        height: 30,
-        borderRadius: 8,
-        background: 'conic-gradient(from 200deg at 50% 50%, #10A37F 0deg, #4285F4 90deg, #D97757 180deg, #E7E7E7 270deg, #10A37F 360deg)',
-        position: 'relative',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
-        flexShrink: 0,
-      }}
-    >
-      <span
-        style={{
-          position: 'absolute',
-          inset: 6,
-          borderRadius: 4,
-          background: 'var(--bg)',
-        }}
-      />
-      <span
-        style={{
-          position: 'absolute',
-          inset: 11,
-          borderRadius: 2,
-          background: 'linear-gradient(135deg, #fff, #aaa)',
-          zIndex: 1,
-        }}
-      />
-    </div>
-  )
-}
+

@@ -16,11 +16,12 @@ interface Props {
   onNewChat: (id: ServiceId) => void
   onExport: (id: ServiceId) => void
   canExport?: boolean
-  showSettings: boolean
-  onToggleSettings: () => void
+  isCard?: boolean
+  isApiKeyActive?: boolean
+  onToggleViewMode?: (id: ServiceId) => void
 }
 
-export function TabBar({ services, activeId, statuses, responseTimes, onSelect, onLogin, onDevTools, onNewChat, onExport, canExport, showSettings, onToggleSettings }: Props) {
+export function TabBar({ services, activeId, statuses, responseTimes, onSelect, onLogin, onDevTools, onNewChat, onExport, canExport, isCard, isApiKeyActive, onToggleViewMode }: Props) {
   return (
     <div style={{
       display: 'flex',
@@ -91,25 +92,6 @@ export function TabBar({ services, activeId, statuses, responseTimes, onSelect, 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
 
-      {/* Settings gear */}
-      <button
-        onClick={onToggleSettings}
-        title="Settings"
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 36, height: '100%', flexShrink: 0,
-          background: showSettings ? '#1a1a1a' : 'transparent',
-          border: 'none', borderLeft: '1px solid #1a1a1a',
-          borderBottom: showSettings ? '2px solid #666' : '2px solid transparent',
-          cursor: 'pointer', color: showSettings ? '#aaa' : '#444',
-          transition: 'color 0.1s',
-        }}
-      >
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-          <circle cx="8" cy="8" r="2.5"/>
-          <path d="M8 1v1.5M8 13.5V15M1 8h1.5M13.5 8H15M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06"/>
-        </svg>
-      </button>
       {services.find(s => s.id === activeId) && (() => {
         const s = services.find(s => s.id === activeId)!
         const loggedOut = statuses[s.id] === 'loggedout'
@@ -125,17 +107,76 @@ export function TabBar({ services, activeId, statuses, responseTimes, onSelect, 
                 }}
               >Login</button>
             )}
+
+            {/* View Mode Toggle */}
+            <button
+              onClick={() => !isApiKeyActive && onToggleViewMode?.(s.id)}
+              disabled={isApiKeyActive}
+              title={isApiKeyActive ? "Forced to Card view via API Key" : `Switch to ${isCard ? 'Native (Browser)' : 'Custom (Card)'} view`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '4px 10px',
+                borderRadius: 5,
+                height: 26,
+                border: isCard ? `1px solid ${s.color}66` : '1px solid #2a2a2a',
+                background: isCard ? `${s.color}18` : '#111',
+                color: isCard ? s.color : '#777',
+                cursor: isApiKeyActive ? 'not-allowed' : 'pointer',
+                fontFamily: 'inherit',
+                fontSize: 11,
+                fontWeight: 600,
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                opacity: isApiKeyActive ? 0.7 : 1,
+              }}
+              onMouseEnter={e => {
+                if (isApiKeyActive) return
+                e.currentTarget.style.color = isCard ? '#fff' : '#ccc'
+                e.currentTarget.style.borderColor = isCard ? s.color : '#444'
+                e.currentTarget.style.background = isCard ? `${s.color}30` : '#1a1a1a'
+                e.currentTarget.style.transform = 'translateY(-0.5px)'
+                e.currentTarget.style.boxShadow = isCard ? `0 0 8px ${s.color}25` : 'none'
+              }}
+              onMouseLeave={e => {
+                if (isApiKeyActive) return
+                e.currentTarget.style.color = isCard ? s.color : '#777'
+                e.currentTarget.style.borderColor = isCard ? `${s.color}66` : '#2a2a2a'
+                e.currentTarget.style.background = isCard ? `${s.color}18` : '#111'
+                e.currentTarget.style.transform = 'none'
+                e.currentTarget.style.boxShadow = 'none'
+              }}
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {isCard ? (
+                  <>
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <line x1="3" y1="9" x2="21" y2="9" />
+                    <line x1="9" y1="21" x2="9" y2="9" />
+                  </>
+                ) : (
+                  <>
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                  </>
+                )}
+              </svg>
+              <span>{isApiKeyActive ? 'API' : isCard ? 'Card' : 'Native'}</span>
+            </button>
             <button
               onClick={() => onNewChat(s.id)}
               title="New chat"
               style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 22, height: 22, borderRadius: 4,
+                width: 26, height: 26, borderRadius: 5,
                 border: '1px solid #222', background: 'transparent',
-                color: '#444', cursor: 'pointer',
+                color: '#555', cursor: 'pointer', transition: 'all 0.1s',
               }}
+              onMouseEnter={e => { e.currentTarget.style.color = '#aaa'; e.currentTarget.style.borderColor = '#333' }}
+              onMouseLeave={e => { e.currentTarget.style.color = '#555'; e.currentTarget.style.borderColor = '#222' }}
             >
-              <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 1.5l1.5 1.5L4 9.5 2 10l.5-2L9 1.5z"/>
                 <path d="M2 11h8"/>
               </svg>
@@ -145,15 +186,19 @@ export function TabBar({ services, activeId, statuses, responseTimes, onSelect, 
                 onClick={() => onExport(s.id)}
                 title="Export conversation"
                 style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: 22, height: 22, borderRadius: 4,
-                  border: '1px solid #222', background: 'transparent',
-                  color: '#444', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '4px 10px', borderRadius: 5, height: 26,
+                  border: '1px solid #2a2a2a', background: '#111',
+                  color: '#777', cursor: 'pointer', fontFamily: 'inherit',
+                  fontSize: 11, fontWeight: 600, transition: 'all 0.1s',
                 }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#ccc'; e.currentTarget.style.borderColor = '#444'; e.currentTarget.style.background = '#1a1a1a' }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#777'; e.currentTarget.style.borderColor = '#2a2a2a'; e.currentTarget.style.background = '#111' }}
               >
-                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 1v6M3 5l3 3 3-3M1 11h10"/>
                 </svg>
+                Export
               </button>
             )}
             <button

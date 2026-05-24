@@ -9,6 +9,8 @@ const api = {
   focusView: (id: ServiceId) => ipcRenderer.invoke(IPC.VIEWS_FOCUS, id),
   openLogin: (id: ServiceId) => ipcRenderer.invoke(IPC.VIEWS_LOGIN, id),
   openDevTools: (id: ServiceId) => ipcRenderer.invoke(IPC.VIEWS_OPEN_DEVTOOLS, id),
+  viewsGetUrls: (): Promise<Record<string, string>> => ipcRenderer.invoke(IPC.VIEWS_GET_URLS),
+  viewsLoadUrl: (id: ServiceId, url: string): Promise<void> => ipcRenderer.invoke(IPC.VIEWS_LOAD_URL, id, url),
   broadcast: (text: string, enabledIds: ServiceId[]): Promise<BroadcastResult[]> =>
     ipcRenderer.invoke(IPC.BROADCAST_SEND, text, enabledIds),
   broadcastSequential: (text: string, orderedIds: ServiceId[]): Promise<BroadcastResult[]> =>
@@ -44,6 +46,14 @@ const api = {
   historyGet: (limit?: number): Promise<{ id: number; text: string; created_at: number }[]> =>
     ipcRenderer.invoke(IPC.HISTORY_GET, limit),
   historyClear: () => ipcRenderer.invoke(IPC.HISTORY_CLEAR),
+  conversationSave: (id: string, title: string, metadata: string, messages: any[]) =>
+    ipcRenderer.invoke(IPC.CONVERSATION_SAVE, id, title, metadata, messages),
+  conversationList: (limit?: number): Promise<{ id: string; title: string; created_at: number; updated_at: number; metadata: string }[]> =>
+    ipcRenderer.invoke(IPC.CONVERSATION_LIST, limit),
+  conversationGet: (id: string): Promise<{ id: string; title: string; created_at: number; updated_at: number; metadata: string; messages: any[] } | null> =>
+    ipcRenderer.invoke(IPC.CONVERSATION_GET, id),
+  conversationDelete: (id: string) => ipcRenderer.invoke(IPC.CONVERSATION_DELETE, id),
+  conversationClearAll: () => ipcRenderer.invoke(IPC.CONVERSATION_CLEAR_ALL),
   apiKeySet: (id: ServiceId, key: string): Promise<void> => ipcRenderer.invoke(IPC.API_KEY_SET, id, key),
   apiKeyGet: (id: ServiceId): Promise<boolean> => ipcRenderer.invoke(IPC.API_KEY_GET, id),
   apiKeyDelete: (id: ServiceId): Promise<void> => ipcRenderer.invoke(IPC.API_KEY_DELETE, id),

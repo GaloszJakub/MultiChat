@@ -9,6 +9,8 @@ declare global {
       focusView: (id: ServiceId) => Promise<void>
       openLogin: (id: ServiceId) => Promise<void>
       openDevTools: (id: ServiceId) => Promise<void>
+      viewsGetUrls: () => Promise<Record<string, string>>
+      viewsLoadUrl: (id: ServiceId, url: string) => Promise<void>
       broadcast: (text: string, enabledIds: ServiceId[]) => Promise<BroadcastResult[]>
       broadcastSequential: (text: string, orderedIds: ServiceId[]) => Promise<BroadcastResult[]>
       onServiceStatus: (cb: (payload: { id: ServiceId; loggedIn: boolean }) => void) => () => void
@@ -27,6 +29,11 @@ declare global {
       historySave: (text: string) => Promise<void>
       historyGet: (limit?: number) => Promise<{ id: number; text: string; created_at: number }[]>
       historyClear: () => Promise<void>
+      conversationSave: (id: string, title: string, metadata: string, messages: any[]) => Promise<void>
+      conversationList: (limit?: number) => Promise<{ id: string; title: string; created_at: number; updated_at: number; metadata: string }[]>
+      conversationGet: (id: string) => Promise<{ id: string; title: string; created_at: number; updated_at: number; metadata: string; messages: any[] } | null>
+      conversationDelete: (id: string) => Promise<void>
+      conversationClearAll: () => Promise<void>
       apiKeySet: (id: ServiceId, key: string) => Promise<void>
       apiKeyGet: (id: ServiceId) => Promise<boolean>
       apiKeyDelete: (id: ServiceId) => Promise<void>

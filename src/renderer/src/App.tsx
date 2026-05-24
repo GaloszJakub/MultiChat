@@ -6,6 +6,7 @@ import { ResponseCard } from './components/ResponseCard'
 import { TabBar } from './components/TabBar'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SERVICES, SERVICE_MODELS } from './lib/services'
+import { resolveTemplate as resolveTemplateUtil } from './lib/chain'
 import { ModelPicker } from './components/ModelPicker'
 import { api } from './lib/ipc'
 import type { ServiceId } from '../../main/services/types'
@@ -52,6 +53,7 @@ const DEFAULT_ENABLED: ServiceId[] = ['claude', 'gemini']
 
 export default function App() {
   const [prompt, setPrompt] = useState('')
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [enabledIds, setEnabledIds] = useState<Set<ServiceId>>(new Set(DEFAULT_ENABLED))
   const [activeId, setActiveId] = useState<ServiceId>(DEFAULT_ENABLED[0])
@@ -123,6 +125,152 @@ export default function App() {
   useEffect(() => {
     apiKeysActiveRef.current = apiKeysActive
   }, [apiKeysActive])
+
+  const activeConversationIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId
+  }, [activeConversationId])
+
+  const conversationsRef = useRef(conversations)
+  useEffect(() => {
+    conversationsRef.current = conversations
+  }, [conversations])
+
+  const enabledIdsRef = useRef(enabledIds)
+  useEffect(() => {
+    enabledIdsRef.current = enabledIds
+  }, [enabledIds])
+
+  const activeIdRef = useRef(activeId)
+  useEffect(() => {
+    activeIdRef.current = activeId
+  }, [activeId])
+
+  const selectedModelsRef = useRef(selectedModels)
+  useEffect(() => {
+    selectedModelsRef.current = selectedModels
+  }, [selectedModels])
+
+  const broadcastModeRef = useRef(broadcastMode)
+  useEffect(() => {
+    broadcastModeRef.current = broadcastMode
+  }, [broadcastMode])
+
+  const pendingWebviewUrlsRef = useRef<Record<string, string>>({})
+
+  // Deferred loading of pending webview URLs when a tab becomes active/visible
+  useEffect(() => {
+    if (activeId) {
+      const pendingUrl = pendingWebviewUrlsRef.current[activeId]
+      if (pendingUrl) {
+        api.viewsLoadUrl(activeId, pendingUrl)
+        delete pendingWebviewUrlsRef.current[activeId]
+      }
+    }
+  }, [activeId])
+
+  const saveCurrentConversation = useCallback(async (convId: string, customConversations?: Record<ServiceId, Message[]>) => {
+    const currentConvs = customConversations || conversationsRef.current
+    
+    // Find first user message for title
+    let title = 'New Conversation'
+    for (const serviceId of Object.keys(currentConvs)) {
+      const msgs = currentConvs[serviceId]
+      const userMsg = msgs.find(m => m.role === 'user')
+      if (userMsg && userMsg.text.trim()) {
+        title = userMsg.text.trim().substring(0, 50)
+        break
+      }
+    }
+
+    const sqlMessages: any[] = []
+    Object.entries(currentConvs).forEach(([serviceId, msgs]) => {
+      msgs.forEach(m => {
+        sqlMessages.push({
+          service_id: serviceId,
+          role: m.role,
+          text: m.text,
+          created_at: Date.now()
+        })
+      })
+    })
+
+    // Capture the current webview URLs
+    let webviewUrls: Record<string, string> = {}
+    try {
+      webviewUrls = await api.viewsGetUrls()
+    } catch (e) {
+      console.error('Error fetching webview URLs during save:', e)
+    }
+
+    const metadata = JSON.stringify({
+      enabledIds: Array.from(enabledIdsRef.current),
+      activeId: activeIdRef.current,
+      selectedModels: selectedModelsRef.current,
+      broadcastMode: broadcastModeRef.current,
+      webviewUrls
+    })
+
+    await api.conversationSave(convId, title, metadata, sqlMessages)
+    // Dispatch custom event to tell the sidebar to refresh its list
+    window.dispatchEvent(new CustomEvent('multichat:conversations-updated'))
+  }, [])
+
+  const loadConversation = useCallback(async (id: string) => {
+    const conv = await api.conversationGet(id)
+    if (!conv) return
+
+    setActiveConversationId(id)
+    activeConversationIdRef.current = id
+    
+    let meta: any = {}
+    try {
+      meta = JSON.parse(conv.metadata)
+      if (meta.enabledIds) setEnabledIds(new Set(meta.enabledIds))
+      if (meta.activeId) setActiveId(meta.activeId)
+      if (meta.selectedModels) setSelectedModels(meta.selectedModels)
+      if (meta.broadcastMode) setBroadcastMode(meta.broadcastMode)
+    } catch (e) {
+      console.error('Error parsing conversation metadata:', e)
+    }
+
+    // Restore webview URLs if they exist (deferred loading to prevent background throttling issues)
+    if (meta.webviewUrls) {
+      pendingWebviewUrlsRef.current = { ...meta.webviewUrls }
+      const currentActiveId = meta.activeId || activeIdRef.current || activeId
+      const activeUrl = meta.webviewUrls[currentActiveId]
+      if (activeUrl) {
+        api.viewsLoadUrl(currentActiveId, activeUrl)
+        delete pendingWebviewUrlsRef.current[currentActiveId]
+      }
+    }
+
+    const nextConversations = emptyConversations()
+    conv.messages.forEach((m: any) => {
+      const serviceId = m.service_id as ServiceId
+      if (nextConversations[serviceId]) {
+        nextConversations[serviceId].push({
+          role: m.role as 'user' | 'assistant',
+          text: m.text
+        })
+      }
+    })
+
+    setConversations(nextConversations)
+
+    const latest: Record<ServiceId, string> = {
+      chatgpt: '', claude: '', gemini: '', grok: '', kimi: '', deepseek: '',
+    }
+    Object.entries(nextConversations).forEach(([serviceId, msgs]) => {
+      const assistantMsgs = msgs.filter(m => m.role === 'assistant')
+      if (assistantMsgs.length > 0) {
+        latest[serviceId as ServiceId] = assistantMsgs[assistantMsgs.length - 1].text
+      }
+    })
+    setLatestResponses(latest)
+    setStatuses(INITIAL_STATUSES)
+    setResponseTimes({})
+  }, [])
 
   useEffect(() => {
     const checkKeys = async () => {
@@ -202,27 +350,7 @@ export default function App() {
     responses: Record<ServiceId, string>,
     previousResponse: string
   ): string => {
-    let resolved = template
-    resolved = resolved.replaceAll('{{input}}', originalInput)
-    resolved = resolved.replaceAll('{{previous}}', previousResponse)
-
-    // Build all_previous
-    const allPreviousParts: string[] = []
-    SERVICES.forEach(s => {
-      const resp = responses[s.id]
-      if (resp && resp.trim()) {
-        allPreviousParts.push(`**${s.label}:**\n${resp}`)
-      }
-    })
-    const allPrevious = allPreviousParts.join('\n\n---\n\n')
-    resolved = resolved.replaceAll('{{all_previous}}', allPrevious)
-
-    // Model specific placeholders
-    SERVICES.forEach(s => {
-      resolved = resolved.replaceAll(`{{${s.id}}}`, responses[s.id] || '')
-    })
-
-    return resolved
+    return resolveTemplateUtil(template, originalInput, responses, previousResponse)
   }, [])
 
   const runPipelineStep = useCallback(async (stepIndex: number, promptText: string) => {
@@ -355,20 +483,26 @@ export default function App() {
 
     const isDirect = apiKeysActive[id]
 
-    setConversations(prev => {
-      const currentMessages = prev[id] || []
-      const nextMsgs = [...currentMessages, { role: 'user', text }, { role: 'assistant', text: '' }]
-      
-      if (isDirect) {
-        const formattedMessages = nextMsgs.slice(0, -1).map(m => ({ role: m.role, content: m.text }))
-        api.apiStream(id, formattedMessages, selectedModels[id], id === 'gemini' ? geminiThinking : undefined)
-      }
-      
-      return {
-        ...prev,
-        [id]: nextMsgs
-      }
-    })
+    let convId = activeConversationIdRef.current
+    if (!convId) {
+      convId = 'conv_' + Date.now()
+      setActiveConversationId(convId)
+      activeConversationIdRef.current = convId
+    }
+
+    const nextConversations = { ...conversationsRef.current }
+    const currentMessages = conversationsRef.current[id] || []
+    const nextMsgs = [...currentMessages, { role: 'user', text }, { role: 'assistant', text: '' }]
+    nextConversations[id] = nextMsgs
+    setConversations(nextConversations)
+
+    pendingWebviewUrlsRef.current = {}
+    saveCurrentConversation(convId, nextConversations)
+
+    if (isDirect) {
+      const formattedMessages = nextMsgs.slice(0, -1).map(m => ({ role: m.role, content: m.text }))
+      api.apiStream(id, formattedMessages, selectedModels[id], id === 'gemini' ? geminiThinking : undefined)
+    }
 
     setStatuses(prev => ({ ...prev, [id]: 'sending' }))
 
@@ -384,11 +518,6 @@ export default function App() {
 
   const handleCardSendRef = useRef(handleCardSend)
   handleCardSendRef.current = handleCardSend
-
-  const enabledIdsRef = useRef(enabledIds)
-  useEffect(() => {
-    enabledIdsRef.current = enabledIds
-  }, [enabledIds])
 
   useEffect(() => {
     const unsub = api.onServiceResponse(({ id, text, done }) => {
@@ -414,6 +543,15 @@ export default function App() {
         })
         if (text.length > 0) {
           setStatuses(prev => prev[id] === 'sending' || prev[id] === 'sent' ? { ...prev, [id]: 'idle' } : prev)
+        }
+
+        const currentConvId = activeConversationIdRef.current
+        if (currentConvId) {
+          setTimeout(() => {
+            if (activeConversationIdRef.current === currentConvId) {
+              saveCurrentConversation(currentConvId)
+            }
+          }, 100)
         }
 
         // Pipeline progression
@@ -497,6 +635,13 @@ export default function App() {
     // Save prompt to SQLite history
     api.historySave(prompt.trim())
 
+    let convId = activeConversationIdRef.current
+    if (!convId) {
+      convId = 'conv_' + Date.now()
+      setActiveConversationId(convId)
+      activeConversationIdRef.current = convId
+    }
+
     if (broadcastMode === 'sequential') {
       startPipeline(finalPrompt)
       setPrompt('')
@@ -514,13 +659,14 @@ export default function App() {
       return next
     })
 
-    setConversations(prev => {
-      const next = { ...prev }
-      ids.filter(id => CARD_SERVICES.has(id) || apiKeysActive[id]).forEach(id => {
-        next[id] = [...prev[id], { role: 'user', text: finalPrompt }, { role: 'assistant', text: '' }]
-      })
-      return next
+    const nextConversations = { ...conversationsRef.current }
+    ids.filter(id => CARD_SERVICES.has(id) || apiKeysActive[id]).forEach(id => {
+      nextConversations[id] = [...(conversationsRef.current[id] || []), { role: 'user', text: finalPrompt }, { role: 'assistant', text: '' }]
     })
+    setConversations(nextConversations)
+
+    pendingWebviewUrlsRef.current = {}
+    saveCurrentConversation(convId, nextConversations)
 
     const directIds = ids.filter(id => apiKeysActive[id])
     const webviewIds = ids.filter(id => !apiKeysActive[id])
@@ -657,8 +803,13 @@ export default function App() {
   const activeModels = SERVICE_MODELS[activeId]
 
   const handleNewChat = useCallback((id: ServiceId) => {
-    setConversations(prev => ({ ...prev, [id]: [] }))
-    setLatestResponses(prev => ({ ...prev, [id]: '' }))
+    setActiveConversationId(null)
+    setConversations(emptyConversations())
+    setLatestResponses({
+      chatgpt: '', claude: '', gemini: '', grok: '', kimi: '', deepseek: '',
+    })
+    setResponseTimes({})
+    setStatuses(INITIAL_STATUSES)
     api.newChat(id)
   }, [])
 
@@ -734,6 +885,8 @@ export default function App() {
           onModalToggle={setModalOpen}
           showSettings={showSettings}
           onToggleSettings={() => setShowSettings(v => !v)}
+          activeConversationId={activeConversationId}
+          onSelectConversation={loadConversation}
         />
 
         <div ref={containerRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>

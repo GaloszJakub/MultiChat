@@ -80,9 +80,7 @@ export function TitleBar({ selectedSkill }: TitleBarProps) {
         title="Minimize"
       >
         <svg width="10" height="1" viewBox="0 0 10 1"><rect width="10" height="1" fill="currentColor" /></svg>
-      </WinBtn>
-
-      <WinBtn
+      </WinBtn>      <WinBtn
         style={btnBase}
         hoverBg="#2a2a2a"
         onClick={() => api.winMaximize()}
@@ -100,7 +98,6 @@ export function TitleBar({ selectedSkill }: TitleBarProps) {
           </svg>
         )}
       </WinBtn>
-
       <WinBtn
         style={btnBase}
         hoverBg="#c42b1c"

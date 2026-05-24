@@ -1,0 +1,33 @@
+{
+  "directory": "C:\\Users\\Kuba\\Documents\\GitHub\\MultiChat",
+  "generatedAt": "2026-05-24T17:38:28.986Z",
+  "nodes": [
+    {
+      "id": "claude",
+      "title": "CLAUDE.md",
+      "file": "CLAUDE.md"
+    },
+    {
+      "id": "readme",
+      "title": "MultiChat",
+      "file": "README.md"
+    },
+    {
+      "id": "vault_map",
+      "title": "Vault Dependency Map",
+      "file": "vault_map.md"
+    }
+  ],
+  "links": [
+    {
+      "source": "Vault Dependency Map",
+      "target": "CLAUDE.md",
+      "reason": "The active file lists this file in the 'Files mapped' section and the Mermaid connection graph as a source node in the dependency graph."
+    },
+    {
+      "source": "Vault Dependency Map",
+      "target": "MultiChat",
+      "reason": "The active file lists this directory in the 'Files mapped' section and the Mermaid connection graph as a target node in the dependency graph."
+    }
+  ]
+}

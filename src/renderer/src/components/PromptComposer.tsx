@@ -531,7 +531,7 @@ export function PromptComposer({
               background: 'transparent',
               border: 0,
               outline: 0,
-              resize: 'vertical',
+              resize: 'none',
               padding: '11px 14px',
               color: 'var(--text)',
               fontSize: 14,

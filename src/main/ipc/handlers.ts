@@ -3,7 +3,7 @@ import { listSkills, readSkill, openSkillsDir, createSkill, deleteSkill } from '
 import { importChromeGoogleCookies } from '../cookie-import'
 import { startCdpLogin } from '../cdp-login'
 import { IPC } from './channels'
-import { savePrompt, getHistory, clearHistory } from '../history'
+import { savePrompt, getHistory, clearHistory, saveConversation, getConversations, getConversationDetails, deleteConversation, clearAllConversations } from '../history'
 import { saveApiKey, getApiKey } from '../api-store'
 import { streamClaude } from '../api-adapters/claude-api'
 import { streamOpenAI } from '../api-adapters/openai-api'
@@ -35,6 +35,27 @@ export function registerHandlers(viewManager: ViewManager) {
 
   ipcMain.handle(IPC.VIEWS_LOGIN, (_e, id: ServiceId) => {
     viewManager.openLoginPopup(id)
+  })
+
+  ipcMain.handle(IPC.VIEWS_GET_URLS, () => {
+    const urls: Record<string, string> = {}
+    for (const [id, view] of viewManager.getAllViews()) {
+      try {
+        urls[id] = view.webContents.getURL()
+      } catch (err) {
+        console.error(`Error getting URL for ${id}:`, err)
+      }
+    }
+    return urls
+  })
+
+  ipcMain.handle(IPC.VIEWS_LOAD_URL, (_e, id: ServiceId, url: string) => {
+    const view = viewManager.getView(id)
+    if (view) {
+      view.webContents.loadURL(url).catch(err => {
+        console.error(`Error loading URL for ${id}:`, err)
+      })
+    }
   })
 
   ipcMain.handle(IPC.BROADCAST_SEND, async (_e, text: string, enabledIds: ServiceId[]): Promise<BroadcastResult[]> => {
@@ -679,6 +700,22 @@ export function registerHandlers(viewManager: ViewManager) {
   ipcMain.handle(IPC.HISTORY_SAVE, (_e, text: string) => savePrompt(text))
   ipcMain.handle(IPC.HISTORY_GET, (_e, limit?: number) => getHistory(limit))
   ipcMain.handle(IPC.HISTORY_CLEAR, () => clearHistory())
+
+  ipcMain.handle(IPC.CONVERSATION_SAVE, (_e, id: string, title: string, metadata: string, messages: any[]) => {
+    saveConversation(id, title, metadata, messages)
+  })
+  ipcMain.handle(IPC.CONVERSATION_LIST, (_e, limit?: number) => {
+    return getConversations(limit)
+  })
+  ipcMain.handle(IPC.CONVERSATION_GET, (_e, id: string) => {
+    return getConversationDetails(id)
+  })
+  ipcMain.handle(IPC.CONVERSATION_DELETE, (_e, id: string) => {
+    deleteConversation(id)
+  })
+  ipcMain.handle(IPC.CONVERSATION_CLEAR_ALL, () => {
+    clearAllConversations()
+  })
 
   ipcMain.handle(IPC.API_KEY_SET, (_e, id: ServiceId, key: string) => saveApiKey(id, key))
   ipcMain.handle(IPC.API_KEY_GET, (_e, id: ServiceId) => !!getApiKey(id))

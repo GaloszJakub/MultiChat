@@ -10,8 +10,26 @@ import { ModelPicker } from './components/ModelPicker'
 import { api } from './lib/ipc'
 import type { ServiceId } from '../../main/services/types'
 import type { Status } from './components/StatusBadge'
+import { PipelineStudioModal, PipelineStep } from './components/PipelineStudioModal'
+import { PipelineControlPanel, PipelineState } from './components/PipelineControlPanel'
 
 export type Message = { role: 'user' | 'assistant'; text: string }
+
+const DEFAULT_CHAIN: PipelineStep[] = [
+  { serviceId: 'chatgpt', promptTemplate: '{{input}}' },
+  { serviceId: 'gemini', promptTemplate: 'Original question:\n"{{input}}"\n\nPrevious response:\n{{previous}}\n---\nReview and provide your own response, highlighting any corrections or additions.' },
+  { serviceId: 'claude', promptTemplate: 'Original question:\n"{{input}}"\n\nPrevious responses:\n{{all_previous}}\n---\nSynthesize the above responses and provide a final definitive answer.' },
+]
+
+const INITIAL_PIPELINE_STATE: PipelineState = {
+  isActive: false,
+  steps: [],
+  currentStepIndex: 0,
+  originalPrompt: '',
+  responses: { chatgpt: '', claude: '', gemini: '', grok: '', kimi: '', deepseek: '' },
+  isPaused: false,
+  editedPrompt: '',
+}
 
 const CARD_SERVICES = new Set<ServiceId>(['claude', 'gemini', 'chatgpt', 'grok', 'kimi', 'deepseek'])
 
@@ -73,6 +91,28 @@ export default function App() {
     return SERVICES.map(s => s.id)
   })
 
+  const [pipelineState, setPipelineState] = useState<PipelineState>(INITIAL_PIPELINE_STATE)
+  const [activeChain, setActiveChain] = useState<PipelineStep[]>(() => {
+    const saved = localStorage.getItem('multichat:active_chain')
+    if (saved) {
+      try {
+        return JSON.parse(saved)
+      } catch {
+        // ignore
+      }
+    }
+    return DEFAULT_CHAIN
+  })
+
+  const [isPipelineStudioOpen, setIsPipelineStudioOpen] = useState<boolean>(false)
+  const [selectedPresetId, setSelectedPresetId] = useState<string>(() => {
+    const saved = localStorage.getItem('multichat:active_chain_preset_id')
+    if (saved) {
+      return saved
+    }
+    return 'standard'
+  })
+
   const serviceOrderRef = useRef(serviceOrder)
   useEffect(() => {
     serviceOrderRef.current = serviceOrder
@@ -129,7 +169,7 @@ export default function App() {
   }, [nativeServices, apiKeysActive])
 
   const reportBounds = useCallback(() => {
-    if (showSettings || isCard(activeId) || modalOpen) {
+    if (showSettings || isCard(activeId) || modalOpen || isPipelineStudioOpen) {
       const key = '[]'
       if (key === lastBoundsKey.current) return
       lastBoundsKey.current = key
@@ -145,7 +185,7 @@ export default function App() {
     if (key === lastBoundsKey.current) return
     lastBoundsKey.current = key
     api.setViewBounds(bounds)
-  }, [activeId, isCard, showSettings, modalOpen])
+  }, [activeId, isCard, showSettings, modalOpen, isPipelineStudioOpen])
 
   useLayoutEffect(() => { reportBounds() })
 
@@ -155,6 +195,155 @@ export default function App() {
     window.addEventListener('resize', reportBounds)
     return () => { ro.disconnect(); window.removeEventListener('resize', reportBounds) }
   }, [reportBounds])
+
+  const resolveTemplate = useCallback((
+    template: string,
+    originalInput: string,
+    responses: Record<ServiceId, string>,
+    previousResponse: string
+  ): string => {
+    let resolved = template
+    resolved = resolved.replaceAll('{{input}}', originalInput)
+    resolved = resolved.replaceAll('{{previous}}', previousResponse)
+
+    // Build all_previous
+    const allPreviousParts: string[] = []
+    SERVICES.forEach(s => {
+      const resp = responses[s.id]
+      if (resp && resp.trim()) {
+        allPreviousParts.push(`**${s.label}:**\n${resp}`)
+      }
+    })
+    const allPrevious = allPreviousParts.join('\n\n---\n\n')
+    resolved = resolved.replaceAll('{{all_previous}}', allPrevious)
+
+    // Model specific placeholders
+    SERVICES.forEach(s => {
+      resolved = resolved.replaceAll(`{{${s.id}}}`, responses[s.id] || '')
+    })
+
+    return resolved
+  }, [])
+
+  const runPipelineStep = useCallback(async (stepIndex: number, promptText: string) => {
+    const step = activeChain[stepIndex]
+    if (!step) return
+    const id = step.serviceId
+
+    setPipelineState(prev => ({
+      ...prev,
+      currentStepIndex: stepIndex,
+      isPaused: false,
+      editedPrompt: promptText
+    }))
+
+    setStatuses(prev => {
+      const next = { ...prev }
+      activeChain.forEach((s, idx) => {
+        if (idx === stepIndex) {
+          next[s.serviceId] = 'sending'
+        } else if (idx > stepIndex) {
+          next[s.serviceId] = 'waiting'
+        }
+      })
+      return next
+    })
+
+    setIsSending(true)
+    sendTimeRef.current = Date.now()
+    setResponseTimes(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+
+    // Append user message to React conversation state (so it displays properly in card mode)
+    const isDirect = apiKeysActive[id]
+    setConversations(prev => {
+      const currentMessages = prev[id] || []
+      const nextMsgs = [...currentMessages, { role: 'user', text: promptText }, { role: 'assistant', text: '' }]
+
+      if (isDirect) {
+        const formattedMessages = nextMsgs.slice(0, -1).map(m => ({ role: m.role, content: m.text }))
+        api.apiStream(id, formattedMessages, selectedModels[id], id === 'gemini' ? geminiThinking : undefined)
+      }
+
+      return {
+        ...prev,
+        [id]: nextMsgs
+      }
+    })
+
+    if (isDirect) return
+
+    try {
+      await api.broadcast(promptText, [id])
+    } catch (e) {
+      setStatuses(prev => ({ ...prev, [id]: 'error' }))
+    }
+  }, [activeChain, apiKeysActive, selectedModels, geminiThinking])
+
+  const startPipeline = useCallback(async (originalPrompt: string) => {
+    if (activeChain.length === 0) return
+
+    const firstStep = activeChain[0]
+    const initialResponses: Record<ServiceId, string> = {
+      chatgpt: '', claude: '', gemini: '', grok: '', kimi: '', deepseek: ''
+    }
+
+    setStatuses(prev => {
+      const next = { ...prev }
+      activeChain.forEach((s, idx) => {
+        next[s.serviceId] = idx === 0 ? 'sending' : 'waiting'
+      })
+      return next
+    })
+
+    const resolvedPrompt = resolveTemplate(firstStep.promptTemplate, originalPrompt, initialResponses, '')
+
+    const newState: PipelineState = {
+      isActive: true,
+      steps: activeChain,
+      currentStepIndex: 0,
+      originalPrompt,
+      responses: initialResponses,
+      isPaused: false,
+      editedPrompt: resolvedPrompt,
+    }
+
+    setPipelineState(newState)
+    await runPipelineStep(0, resolvedPrompt)
+  }, [activeChain, resolveTemplate, runPipelineStep])
+
+  const handleCancelPipeline = useCallback(() => {
+    setPipelineState(INITIAL_PIPELINE_STATE)
+    setIsSending(false)
+    setStatuses(prev => {
+      const next = { ...prev }
+      SERVICES.forEach(s => {
+        if (next[s.id] === 'sending' || next[s.id] === 'waiting') {
+          next[s.id] = 'idle'
+        }
+      })
+      return next
+    })
+  }, [])
+
+  // Refs for stale closures prevention
+  const pipelineStateRef = useRef(pipelineState)
+  useEffect(() => {
+    pipelineStateRef.current = pipelineState
+  }, [pipelineState])
+
+  const resolveTemplateRef = useRef(resolveTemplate)
+  useEffect(() => {
+    resolveTemplateRef.current = resolveTemplate
+  }, [resolveTemplate])
+
+  const runPipelineStepRef = useRef(runPipelineStep)
+  useEffect(() => {
+    runPipelineStepRef.current = runPipelineStep
+  }, [runPipelineStep])
 
   const handleCardSend = useCallback(async (id: ServiceId, text: string) => {
     sendTimeRef.current = Date.now()
@@ -226,31 +415,51 @@ export default function App() {
         if (text.length > 0) {
           setStatuses(prev => prev[id] === 'sending' || prev[id] === 'sent' ? { ...prev, [id]: 'idle' } : prev)
         }
-      }
-    })
-    return unsub
-  }, [])
 
-  useEffect(() => {
-    const unsub = api.onSerialProgress(({ currentId, index, total, done }) => {
-      if (done) {
-        setSerialActiveId(null)
-        setIsSending(false)
-        return
-      }
-      setSerialActiveId(currentId)
-      setStatuses(prev => {
-        const next = { ...prev }
-        const order = serviceOrderRef.current.filter(id => enabledIdsRef.current.has(id))
-        order.forEach((id, idx) => {
-          if (idx > index) {
-            next[id] = 'waiting'
-          } else if (id === currentId) {
-            next[id] = 'sending'
+        // Pipeline progression
+        const pipe = pipelineStateRef.current
+        if (pipe.isActive) {
+          const currentStep = pipe.steps[pipe.currentStepIndex]
+          if (currentStep && currentStep.serviceId === id) {
+            const updatedResponses = { ...pipe.responses, [id]: text }
+
+            const nextIdx = pipe.currentStepIndex + 1
+            if (nextIdx >= pipe.steps.length) {
+              setPipelineState(prev => ({
+                ...prev,
+                responses: updatedResponses,
+                isActive: false
+              }))
+              setIsSending(false)
+            } else {
+              const nextStep = pipe.steps[nextIdx]
+              const nextResolved = resolveTemplateRef.current(nextStep.promptTemplate, pipe.originalPrompt, updatedResponses, text)
+
+              setPipelineState(prev => ({
+                ...prev,
+                responses: updatedResponses,
+                currentStepIndex: nextIdx,
+                isPaused: false,
+                editedPrompt: nextResolved
+              }))
+
+              setStatuses(prev => {
+                const next = { ...prev }
+                next[id] = 'idle'
+                next[nextStep.serviceId] = 'sending'
+                return next
+              })
+
+              setActiveId(nextStep.serviceId)
+              setShowSettings(false)
+
+              setTimeout(() => {
+                runPipelineStepRef.current(nextIdx, nextResolved)
+              }, 1200)
+            }
           }
-        })
-        return next
-      })
+        }
+      }
     })
     return unsub
   }, [])
@@ -285,10 +494,16 @@ export default function App() {
     if (!prompt.trim() || isSending || enabledIds.size === 0) return
     const ids = serviceOrder.filter(id => enabledIds.has(id))
     const finalPrompt = skillContent ? `${skillContent}\n\n---\n\n${prompt.trim()}` : prompt.trim()
-    setIsSending(true)
-
     // Save prompt to SQLite history
     api.historySave(prompt.trim())
+
+    if (broadcastMode === 'sequential') {
+      startPipeline(finalPrompt)
+      setPrompt('')
+      return
+    }
+
+    setIsSending(true)
 
     sendTimeRef.current = Date.now()
     setResponseTimes({})
@@ -540,6 +755,7 @@ export default function App() {
               onSetBroadcastMode={setBroadcastMode}
               serviceOrder={serviceOrder}
               onUpdateServiceOrder={setServiceOrder}
+              onOpenPipelineStudio={() => setIsPipelineStudioOpen(true)}
             />
           </div>
           {/* Tab bar */}
@@ -606,6 +822,14 @@ export default function App() {
             </div>
           )}
 
+          {/* Pipeline Control Panel */}
+          {pipelineState.isActive && (
+            <PipelineControlPanel
+              state={pipelineState}
+              onStopPipeline={handleCancelPipeline}
+            />
+          )}
+
           {/* Content area */}
           <div
             ref={activePaneRef}
@@ -637,6 +861,18 @@ export default function App() {
           </div>
         </div>
       </div>
+      <PipelineStudioModal
+        isOpen={isPipelineStudioOpen}
+        onClose={() => setIsPipelineStudioOpen(false)}
+        steps={activeChain}
+        selectedPresetId={selectedPresetId}
+        onSave={(newSteps, presetId) => {
+          setActiveChain(newSteps)
+          setSelectedPresetId(presetId)
+          localStorage.setItem('multichat:active_chain', JSON.stringify(newSteps))
+          localStorage.setItem('multichat:active_chain_preset_id', presetId)
+        }}
+      />
     </div>
   )
 }

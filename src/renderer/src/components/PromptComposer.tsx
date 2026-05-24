@@ -3,6 +3,7 @@ import { ServiceLogo } from './ServiceLogo'
 import type { ServiceId } from '../../../main/services/types'
 import type { Status } from './StatusBadge'
 import { SERVICES } from '../lib/services'
+import { PipelinePreset } from './PipelineStudioModal'
 
 interface Attachment {
   name: string
@@ -27,6 +28,7 @@ interface Props {
   onSetBroadcastMode?: (mode: 'parallel' | 'sequential') => void
   serviceOrder?: ServiceId[]
   onUpdateServiceOrder?: (newOrder: ServiceId[]) => void
+  onOpenPipelineStudio?: () => void
 }
 
 export function PromptComposer({
@@ -43,8 +45,9 @@ export function PromptComposer({
   hasResponsesToSummarize,
   broadcastMode = 'parallel',
   onSetBroadcastMode,
-  serviceOrder = SERVICES.map(s => s.id),
-  onUpdateServiceOrder
+  onUpdateServiceOrder,
+  onOpenPipelineStudio,
+  serviceOrder = SERVICES.map(s => s.id)
 }: Props) {
   const enabledServices = serviceOrder
     .filter(id => enabledIds.has(id))
@@ -75,6 +78,8 @@ export function PromptComposer({
 
   const [activeDragId, setActiveDragId] = React.useState<ServiceId | null>(null)
   const draggedIdRef = useRef<ServiceId | null>(null)
+
+
 
   const handleDragStart = (e: React.DragEvent, id: ServiceId) => {
     draggedIdRef.current = id
@@ -592,6 +597,34 @@ export function PromptComposer({
                   Sequential
                 </button>
               </div>
+              {broadcastMode === 'sequential' && (
+                <>
+                  <span>·</span>
+                  <button
+                    type="button"
+                    onClick={onOpenPipelineStudio}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 10.5,
+                      padding: '3px 10px',
+                      borderRadius: 6,
+                      background: 'var(--surface-2)',
+                      border: '1px solid var(--border)',
+                      color: 'var(--text)',
+                      fontWeight: 600,
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      transition: 'all 0.1s ease',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'var(--surface-2)'}
+                  >
+                    <span>Configure Chain</span>
+                  </button>
+                </>
+              )}
               <span>·</span>
               <span style={{ color: readyCount === 0 ? 'var(--warn)' : 'var(--text-dim)' }}>
                 {readyCount === 0

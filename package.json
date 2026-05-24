@@ -1,6 +1,6 @@
 {
   "name": "multichat",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Broadcast one prompt to ChatGPT, Claude, Gemini, and Grok simultaneously",
   "main": "./out/main/index.js",
   "scripts": {

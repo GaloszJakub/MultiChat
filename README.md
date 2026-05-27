@@ -1,72 +1,48 @@
 # MultiChat
 
-MultiChat to zaawansowany, premium klient desktopowy zbudowany w oparciu o **Electron**, **React**, **Vite** oraz **TypeScript**. Aplikacja pozwala na jednoczesną i sekwencyjną komunikację z wiodącymi modelami językowymi AI (ChatGPT, Claude, Gemini, Grok, Kimi, DeepSeek) w jednym spójnym i nowoczesnym interfejsie.
+MultiChat to aplikacja desktopowa (Electron + React + TypeScript), która pozwala rozmawiać z wieloma modelami AI (ChatGPT, Claude, Gemini, Grok, Kimi, DeepSeek) w jednym miejscu. Aplikacja działa bezpośrednio przez zalogowanie się na konta webowe i nie wymaga posiadania płatnych kluczy API.
 
----
+## Co potrafi aplikacja
 
-## Główne Funkcje
+* **Brak konieczności konfiguracji API**: Działa bezpośrednio na bazie Twoich standardowych kont przeglądarkowych – nie musisz generować ani płacić za klucze API.
+* **Wysyłanie równoległe (Parallel Mode)**: Możesz wysłać jeden prompt do kilku modeli jednocześnie i porównać odpowiedzi obok siebie (w kolumnach lub zakładkach).
+* **Łączenie modeli w łańcuchy (Sequential Chaining)**: Pozwala stworzyć potok (pipeline), w którym odpowiedź z jednego modelu automatycznie staje się wejściem dla kolejnego (np. jeden model pisze konspekt, drugi go rozwija).
+* **Pipeline Studio**: Prosty edytor wizualny do układania kroków, zmieniania kolejności, dodawania nowych etapów i edycji promptów szablonowych.
+* **Omijanie blokad (CDP Login)**: Logowanie do usług typu ChatGPT czy Gemini przez sterowaną przeglądarkę Chrome, co pozwala na pobranie ciasteczek sesyjnych i obejście Cloudflare w aplikacji.
+* **Historia i Szablony (Skills)**: Zapisywanie własnych promptów systemowych (umiejętności) i lokalna baza danych SQLite przechowująca historię wszystkich rozmów z możliwością wyszukiwania.
+* **Statystyki i eksport**: Pomiar czasu odpowiedzi modeli oraz eksport rozmów do plików Markdown (.md) lub tekstowych (.txt).
 
-### 1. Równoległe Nadawanie (Parallel Mode)
-* Wysyłaj jedno zapytanie do wielu wybranych modeli jednocześnie.
-* Porównuj odpowiedzi w czasie rzeczywistym w czytelnym układzie kolumnowym lub kartach.
-* Pełna obsługa szybkiego streamowania odpowiedzi (Direct API) oraz standardowych widoków webowych.
+## Obsługiwane modele
 
-### 2. Sekwencyjne Łańcuchy Modeli (Sequential Chaining)
-* Konfiguruj zaawansowane scenariusze wieloetapowego przetwarzania (tzw. pipeline).
-* Wyjście (odpowiedź) jednego modelu staje się automatycznie wejściem (kontekstem) dla kolejnego modelu w łańcuchu.
-* Automatyczne przekazywanie danych z zachowaniem eleganckiego opóźnienia i wizualnego postępu na dedykowanym, smukłym pasku kontrolnym na dole ekranu.
+| Usługa | Przykładowe modele |
+| :--- | :--- |
+| ChatGPT | GPT-4o, GPT-4o mini, o1, o3-mini |
+| Claude | Sonnet 4.6, Opus 4.7, Haiku 4.5 |
+| Gemini | 3.5 Flash, 3.1 Pro, 3.1 Flash-Lite |
+| Grok | Grok 3, Grok 2 |
+| Kimi | moonshot-v1-8k, moonshot-v1-32k |
+| DeepSeek | DeepSeek R1, DeepSeek V3 |
 
-### 3. Pipeline Studio
-* Wbudowany, dwukolumnowy graficzny konfigurator łańcuchów modeli:
-  - **Gotowe szablony (Preset Templates)**: Szybkie wczytywanie domyślnych konfiguracji (np. *Standard Chain*, *Critic & Refiner*, *Outline & Write*) jednym kliknięciem.
-  - **Edytor szablonów promptów**: Pełna edytowalność promptów na każdym etapie potoku za pomocą automatycznie rozszerzających się pól tekstowych (`TextareaAutoGrow`).
-  - **ServiceSelector**: Luksusowe, autorskie menu rozwijane z sygnalizacją świetlną LED w kolorach poszczególnych marek AI do szybkiego przypisywania modeli do zadań.
-  - **Zarządzanie krokami**: Możliwość dodawania (+ Add Step), usuwania (✕) oraz rearanżacji (▲/▼) kolejności wykonywania kroków.
+## Jak to uruchomić
 
-### 4. Bezpieczne omijanie zabezpieczeń botów (CDP Login)
-* Integracja z **CDP (Chrome DevTools Protocol)**.
-* Logowanie do usług takich jak ChatGPT czy Gemini odbywa się za pośrednictwem zewnętrznej, kontrolowanej instancji przeglądarki Google Chrome.
-* MultiChat automatycznie pobiera ciasteczka sesyjne po pomyślnym zalogowaniu, omijając restrykcyjne blokady Cloudflare w natywnych WebViews.
+### Wymagania
+* Zainstalowany Node.js (wersja 18 lub nowsza)
+* Zainstalowana przeglądarka Google Chrome (potrzebna do logowania CDP)
 
-### 5. Narzędzia i Wydajność
-* **Lokalna historia SQLite**: Automatyczne zapisywanie wszystkich promptów do wbudowanej bazy danych SQLite z możliwością przeszukiwania skrótami klawiszowymi.
-* **Eksport danych**: Możliwość eksportowania całej konwersacji z wybranego panelu do pliku tekstowego lub Markdown.
-* **Response Timings**: Dokładny pomiar i wizualizacja czasu odpowiedzi każdego z modeli AI.
-
----
-
-## Architektura i Stack Technologiczny
-
-* **Środowisko uruchomieniowe**: Electron (proces główny & proces renderowania)
-* **Kompilator i Bundler**: Electron-Vite
-* **Biblioteka UI**: React (z hookami stanu, efektami i zaawansowanymi komponentami)
-* **Język programowania**: TypeScript (pełne, ścisłe typowanie)
-* **Baza danych**: SQLite (poprzez `better-sqlite3`)
-* **Stylizacja**: Vanilla CSS & TailwindCSS (premium ciemna estetyka, szklane rozmycia `backdropFilter`, płynne mikro-animacje)
-
----
-
-## Uruchomienie i Budowanie
-
-### Wymagania:
-* [Node.js](https://nodejs.org/) (wersja 18 lub nowsza)
-* NPM lub Yarn
-
-### 1. Instalacja zależności:
+### Instalacja i uruchomienie dev
 ```bash
+# Pobierz zależności
 npm install
-```
 
-### 2. Uruchomienie w trybie developerskim (Live Reload):
-```bash
+# Uruchom aplikację w trybie developerskim
 npm run dev
 ```
 
-### 3. Zbudowanie gotowych plików wykonywalnych (.exe):
-Generuje instalator oraz wersję przenośną w katalogu `dist/` za pomocą `electron-builder`:
+### Budowanie wersji produkcyjnej (.exe)
 ```bash
+# Buduje wersję instalacyjną i portable w folderze dist/
 npm run package
 ```
-Po zakończeniu procesu w folderze `dist/` znajdziesz:
-* `MultiChat Setup [wersja].exe` – instalator Windows
-* `MultiChat [wersja].exe` – w pełni przenośna wersja aplikacji (Portable)
+
+## Gdzie są zapisywane dane
+Wszystkie dane (historia rozmów, ciasteczka sesyjne, konfiguracje potoków) są zapisywane wyłącznie lokalnie na Twoim komputerze w bazie SQLite. Aplikacja nie wysyła żadnych Twoich danych ani loginów na zewnętrzne serwery pośredniczące.
